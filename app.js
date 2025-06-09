@@ -8,12 +8,14 @@ import { errorMiddleware } from './middlewares/error.js';
 import userRouter from './routes/userRouter.js';
 import vehicleRouter from './routes/vehicleRouter.js';
 import { removeUnverifiedAccounts } from './automation/removeUnverifiedAccount.js';
+import loadRouter from './routes/loadRouter.js';
 
 export const app = express();
 
 const allowedOrigins = [
     process.env.CLIENT_URL,
-    "http://192.168.1.7:5173"  // Add LAN IP or ngrok URL here
+    "http://192.168.1.7:5173",  
+    "https://vpl-liveproject-1.onrender.com"
 ];
 
 app.use(cors({
@@ -39,6 +41,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
+app.use('/api/v1/load', loadRouter);
 removeUnverifiedAccounts();
 connectDB();
 
