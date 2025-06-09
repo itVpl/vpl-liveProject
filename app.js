@@ -12,9 +12,17 @@ import loadRouter from './routes/loadRouter.js';
 
 export const app = express();
 
+// const allowedOrigins = [
+//     process.env.CLIENT_URL,
+//     "http://192.168.1.7:5173",  
+//     "https://vpl-liveproject-1.onrender.com",
+//     "https://vpowersuperadmin.netlify.app",
+//     "http://localhost:5173"
+// ];
+
 const allowedOrigins = [
-    process.env.CLIENT_URL,
-    "http://192.168.1.7:5173",  
+    ...(process.env.CLIENT_URL?.split(',') || []),
+    "http://192.168.1.7:5173",
     "https://vpl-liveproject-1.onrender.com",
     "https://vpowersuperadmin.netlify.app",
     "http://localhost:5173"
