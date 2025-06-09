@@ -14,8 +14,7 @@ export const app = express();
 
 const allowedOrigins = [
     process.env.CLIENT_URL,
-    "http://192.168.1.7:5173",  
-    "https://vpl-liveproject-1.onrender.com"
+    "http://192.168.1.7:5173"
 ];
 
 app.use(cors({
