@@ -12,26 +12,23 @@ import loadRouter from './routes/loadRouter.js';
 
 export const app = express();
 
-// const allowedOrigins = [
-//     process.env.CLIENT_URL,
-//     "http://192.168.1.7:5173"
-// ];
-
-// app.use(cors({
-//     origin: function (origin, callback) {
-//         if (!origin || allowedOrigins.includes(origin)) {
-//             callback(null, true);
-//         } else {
-//             callback(new Error('Not allowed by CORS'));
-//         }
-//     },
-//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-//     credentials: true
-// }));
+const allowedOrigins = [
+    process.env.CLIENT_URL,
+    "http://192.168.1.7:5173",  
+    "https://vpl-liveproject-1.onrender.com",
+    "https://vpowersuperadmin.netlify.app"
+];
 
 app.use(cors({
-    origin: '*',
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    credentials: true
 }));
 
 // app.use(cors({
