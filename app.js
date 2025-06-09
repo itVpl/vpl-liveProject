@@ -12,21 +12,26 @@ import loadRouter from './routes/loadRouter.js';
 
 export const app = express();
 
-const allowedOrigins = [
-    process.env.CLIENT_URL,
-    "http://192.168.1.7:5173"
-];
+// const allowedOrigins = [
+//     process.env.CLIENT_URL,
+//     "http://192.168.1.7:5173"
+// ];
+
+// app.use(cors({
+//     origin: function (origin, callback) {
+//         if (!origin || allowedOrigins.includes(origin)) {
+//             callback(null, true);
+//         } else {
+//             callback(new Error('Not allowed by CORS'));
+//         }
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+//     credentials: true
+// }));
 
 app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    credentials: true
 }));
 
 // app.use(cors({
