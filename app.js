@@ -16,7 +16,8 @@ const allowedOrigins = [
     process.env.CLIENT_URL,
     "http://192.168.1.7:5173",  
     "https://vpl-liveproject-1.onrender.com",
-    "https://vpowersuperadmin.netlify.app"
+    "https://vpowersuperadmin.netlify.app",
+    "http://localhost:5173"
 ];
 
 app.use(cors({
