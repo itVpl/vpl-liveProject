@@ -60,13 +60,22 @@ const loadSchema = new mongoose.Schema({
     required: true,
   },
   origin: {
-    city: { type: String, required: true }
+    city: { type: String, required: true },
   },
   destination: {
-    city: { type: String, required: true }
+    city: { type: String, required: true },
   },
   weight: {
     type: Number,
+    required: true,
+  },
+  commodity: {
+    type: String,
+    default: null, 
+  },
+  vehicleType: {
+    type: String,
+    enum: ['Truck', 'Trailer', 'Container', 'Reefer', 'Flatbed', 'Tanker'], 
     required: true,
   },
   status: {
@@ -77,7 +86,7 @@ const loadSchema = new mongoose.Schema({
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    default: null
+    default: null,
   },
   createdAt: {
     type: Date,

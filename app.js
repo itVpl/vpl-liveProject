@@ -9,6 +9,8 @@ import userRouter from './routes/userRouter.js';
 import vehicleRouter from './routes/vehicleRouter.js';
 import { removeUnverifiedAccounts } from './automation/removeUnverifiedAccount.js';
 import loadRouter from './routes/loadRouter.js';
+import bidRouter from './routes/bidRouter.js';
+import driverRouter from './routes/driverRoutes.js';
 
 export const app = express();
 
@@ -52,6 +54,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
 app.use('/api/v1/load', loadRouter);
+app.use('/api/v1/bid', bidRouter);
+app.use('/api/v1/driver', driverRouter);
+
+
 removeUnverifiedAccounts();
 connectDB();
 

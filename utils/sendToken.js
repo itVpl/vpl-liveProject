@@ -29,8 +29,8 @@ export const sendToken = (user, statusCode, message, res) => {
     .cookie("token", token, {
       expires: new Date(Date.now() + cookieExpireDays * 24 * 60 * 60 * 1000),
       httpOnly: true,
-      sameSite: "Lax",  // ⬅️ This helps with cookies between ports
-      secure: false     // ⬅️ Set to true when deploying on HTTPS
+      sameSite: "None",  // ⬅️ This helps with cookies between ports
+      secure: true     // ⬅️ Set to true when deploying on HTTPS
     })
     .json({
       success: true,

@@ -23,13 +23,15 @@ import { Load } from '../models/loadModel.js';
 
 export const createLoad = async (req, res, next) => {
     try {
-        const { fromCity, toCity, weight } = req.body;
+        const { fromCity, toCity, weight, commodity, vehicleType } = req.body;
 
         const newLoad = new Load({
             shipper: req.user._id,
             origin: { city: fromCity },
             destination: { city: toCity },
             weight,
+            commodity,
+            vehicleType
         });
 
         await newLoad.save();
