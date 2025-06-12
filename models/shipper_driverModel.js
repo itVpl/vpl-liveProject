@@ -9,7 +9,7 @@ const shipperDriverSchema = new mongoose.Schema({
   },
   userType: {
     type: String,
-    enum: ['shipper', 'driver'],
+    enum: ['shipper', 'trucker'],
     required: true,
   },
   status: {
