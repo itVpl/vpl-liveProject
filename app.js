@@ -11,8 +11,14 @@ import { removeUnverifiedAccounts } from './automation/removeUnverifiedAccount.j
 import loadRouter from './routes/loadRouter.js';
 import bidRouter from './routes/bidRouter.js';
 import driverRouter from './routes/driverRoutes.js';
+import shipperDriverRouter from './routes/shipper_driverRoutes.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 export const app = express();
+
+const _filename = fileURLToPath(import.meta.url);
+const _dirname = path.dirname(_filename);
 
 // const allowedOrigins = [
 //     process.env.CLIENT_URL,
@@ -56,6 +62,7 @@ app.use('/api/v1/vehicle', vehicleRouter);
 app.use('/api/v1/load', loadRouter);
 app.use('/api/v1/bid', bidRouter);
 app.use('/api/v1/driver', driverRouter);
+app.use('/api/v1/shipper_driver', shipperDriverRouter);
 
 
 removeUnverifiedAccounts();
