@@ -5,7 +5,8 @@ import {
   getAllEmployees,
   getEmployeeById,
   updateEmployee,
-  deleteEmployee
+  deleteEmployee,
+  getEmployeesByDepartment
 } from '../controllers/inhouseUserController.js';
 
 const router = express.Router();
@@ -14,7 +15,11 @@ const router = express.Router();
 router.post('/', employeeUpload.fields([
   { name: 'pancard', maxCount: 1 },
   { name: 'aadharcard', maxCount: 1 },
-  { name: 'educationalDocs', maxCount: 10 }
+  { name: 'educationalDocs', maxCount: 10 },
+  { name: 'releaseLetter', maxCount: 1 },
+  { name: 'offerLetter', maxCount: 1 },
+  { name: 'experienceLetter', maxCount: 1 },
+  { name: 'bankStatementOrSalarySlip', maxCount: 10 }
 ]), createEmployee);
 
 // 🔹 Get All Employees
@@ -24,13 +29,20 @@ router.get('/', getAllEmployees);
 router.get('/:empId', getEmployeeById);
 
 // 🔹 Update Employee
-router.put('/:id', employeeUpload.fields([
+router.put('/:empId', employeeUpload.fields([
   { name: 'pancard', maxCount: 1 },
   { name: 'aadharcard', maxCount: 1 },
-  { name: 'educationalDocs', maxCount: 10 }
+  { name: 'educationalDocs', maxCount: 10 },
+  { name: 'releaseLetter', maxCount: 1 },
+  { name: 'offerLetter', maxCount: 1 },
+  { name: 'experienceLetter', maxCount: 1 },
+  { name: 'bankStatementOrSalarySlip', maxCount: 10 }
 ]), updateEmployee);
 
 // 🔹 Delete Employee
 router.delete('/:id', deleteEmployee);
+
+// 🔹 Get Employees by Department
+router.get('/department/:department', getEmployeesByDepartment);
 
 export default router;
