@@ -12,6 +12,7 @@ import loadRouter from './routes/loadRouter.js';
 import bidRouter from './routes/bidRouter.js';
 import driverRouter from './routes/driverRoutes.js';
 import shipperDriverRouter from './routes/shipper_driverRoutes.js';
+import inhouseUserRouter from './routes/inhouseUserRoutes.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -63,6 +64,7 @@ app.use('/api/v1/load', loadRouter);
 app.use('/api/v1/bid', bidRouter);
 app.use('/api/v1/driver', driverRouter);
 app.use('/api/v1/shipper_driver', shipperDriverRouter);
+app.use('/api/v1/inhouseUser', inhouseUserRouter);
 
 
 removeUnverifiedAccounts();

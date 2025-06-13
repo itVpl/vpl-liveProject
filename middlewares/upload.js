@@ -7,19 +7,33 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Create directory if not exists
-const uploadPath = path.join(__dirname, '../uploads/docs');
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
+const baseUploadPath = path.join(__dirname, '../uploads/employeeData');
+if (!fs.existsSync(baseUploadPath)) {
+  fs.mkdirSync(baseUploadPath, { recursive: true });
 }
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadPath);
+    // Try to get empId from multiple places
+    let empId =
+      req.body.empId ||
+      (req.query && req.query.empId) ||
+      (req.headers && req.headers.empid) ||
+      (req.params && (req.params.empId || req.params.id));
+    if (!empId) {
+      // fallback: use 'unknown' + timestamp
+      empId = 'unknown_' + Date.now();
+    }
+    const empFolder = path.join(baseUploadPath, empId);
+    if (!fs.existsSync(empFolder)) {
+      fs.mkdirSync(empFolder, { recursive: true });
+    }
+    cb(null, empFolder);
   },
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
-    const filename = `doc_${Date.now()}${ext}`;
+    // Use fieldname for clarity (e.g. pancard, aadharcard, educationalDocs)
+    const filename = `${file.fieldname}_${Date.now()}${ext}`;
     cb(null, filename);
   },
 });
@@ -34,6 +48,17 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ storage, fileFilter });
+const employeeUpload = multer({ storage, fileFilter });
 
-export default upload; // ✅ ESM style
+const normalizePath = (filePath) => {
+  const relBase = 'uploads' + path.sep + 'employeeData';
+  const idx = filePath.indexOf(relBase);
+  let relPath = filePath;
+  if (idx !== -1) {
+    relPath = filePath.substring(idx);
+  }
+  return relPath.split(path.sep).join('/');
+};
+export { normalizePath };
+
+export default employeeUpload;
