@@ -6,7 +6,9 @@ import {
   getEmployeeById,
   updateEmployee,
   deleteEmployee,
-  getEmployeesByDepartment
+  getEmployeesByDepartment,
+  loginEmployee,
+  updateEmployeeStatus
 } from '../controllers/inhouseUserController.js';
 
 const router = express.Router();
@@ -44,5 +46,11 @@ router.delete('/:id', deleteEmployee);
 
 // 🔹 Get Employees by Department
 router.get('/department/:department', getEmployeesByDepartment);
+
+// 🔹 Employee Login
+router.post('/login', loginEmployee);
+
+// 🔹 Update Employee Status (active/inactive)
+router.patch('/:empId/status', updateEmployeeStatus);
 
 export default router;

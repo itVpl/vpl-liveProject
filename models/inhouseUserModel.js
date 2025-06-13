@@ -31,11 +31,12 @@ const employeeSchema = new mongoose.Schema({
     accountHolderName: { type: String },
     accountNumber: { type: String },
     ifscCode: { type: String }
-  }
+  },
+
+  password: { type: String, required: true, select: false },
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' }
 
 }, { timestamps: true });
-
-
 
 
 const Employee = mongoose.model('Employee', employeeSchema);

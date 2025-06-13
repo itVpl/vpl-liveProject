@@ -2,6 +2,8 @@ import Employee from '../models/inhouseUserModel.js';
 import { normalizePath } from '../middlewares/upload.js';
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 // 🔹 Create new employee
 export const createEmployee = async (req, res) => {
@@ -19,8 +21,12 @@ export const createEmployee = async (req, res) => {
       dateOfJoining,
       accountHolderName,
       accountNumber,
-      ifscCode
+      ifscCode,
+      password
     } = req.body;
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Handle file uploads for identityDocs
     const pancardPath = req.files && req.files.pancard ? normalizePath(req.files.pancard[0].path) : undefined;
@@ -59,7 +65,8 @@ export const createEmployee = async (req, res) => {
         accountHolderName,
         accountNumber,
         ifscCode
-      }
+      },
+      password: hashedPassword
     };
 
     let newEmployee;
@@ -141,7 +148,12 @@ export const updateEmployee = async (req, res) => {
 
     // Update only provided fields
     Object.keys(req.body).forEach(key => {
-      employee[key] = req.body[key];
+      if (key === 'password') {
+        // Hash new password if provided
+        employee.password = bcrypt.hashSync(req.body.password, 10);
+      } else {
+        employee[key] = req.body[key];
+      }
     });
 
     // Handle file uploads for identityDocs
@@ -205,6 +217,56 @@ export const getEmployeesByDepartment = async (req, res) => {
     const { department } = req.params;
     const employees = await Employee.find({ department });
     res.status(200).json({ employees });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 🔹 Login employee
+export const loginEmployee = async (req, res) => {
+  try {
+    const { empId, password } = req.body;
+    if (!empId || !password) {
+      return res.status(400).json({ message: 'empId and password are required' });
+    }
+    const employee = await Employee.findOne({ empId }).select('+password');
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+    const isMatch = await bcrypt.compare(password, employee.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    // Generate JWT token
+    const token = jwt.sign({ empId: employee.empId, id: employee._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    // Remove password from response
+    const employeeObj = employee.toObject();
+    delete employeeObj.password;
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      employee: employeeObj
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 🔹 Update user status (active/inactive)
+export const updateEmployeeStatus = async (req, res) => {
+  try {
+    const { empId } = req.params;
+    const { status } = req.body;
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status value' });
+    }
+    const employee = await Employee.findOneAndUpdate(
+      { empId },
+      { status },
+      { new: true, runValidators: true }
+    );
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+    res.status(200).json({ message: 'Status updated successfully', employee });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
