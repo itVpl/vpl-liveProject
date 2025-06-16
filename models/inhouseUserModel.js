@@ -17,7 +17,7 @@ const employeeSchema = new mongoose.Schema({
   identityDocs: {
     panCard: { type: String },
     aadharCard: { type: String },
-    educationalDocs: [{ type: String }]  
+    educationalDocs: [{ type: String }]
   },
 
   previousCompanyDocs: {
@@ -34,10 +34,18 @@ const employeeSchema = new mongoose.Schema({
   },
 
   password: { type: String, required: true, select: false },
-  status: { type: String, enum: ['active', 'inactive'], default: 'active' }
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+
+  // 🔐 Role-based access
+  role: {
+    type: String,
+    enum: ['superadmin', 'admin', 'employee'],
+    default: 'employee'
+  },
+  allowedModules: [{ type: String }]
 
 }, { timestamps: true });
 
 
 const Employee = mongoose.model('Employee', employeeSchema);
-export default Employee;
+export { Employee };

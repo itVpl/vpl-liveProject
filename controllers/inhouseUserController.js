@@ -1,9 +1,23 @@
-import Employee from '../models/inhouseUserModel.js';
+import { Employee } from '../models/inhouseUserModel.js';
 import { normalizePath } from '../middlewares/upload.js';
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { UserActivity } from '../models/userActivityModel.js';
+
+// Helper function to format date
+const formatDate = (date) => {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+
+  return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+};
 
 // 🔹 Create new employee
 export const createEmployee = async (req, res) => {
@@ -119,21 +133,21 @@ export const getEmployeeById = async (req, res) => {
     const employee = await Employee.findOne({ empId: empId.toString() });
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: `Employee with empId ${empId} not found` 
+        message: `Employee with empId ${empId} not found`
       });
     }
 
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
-      employee 
+      employee
     });
   } catch (err) {
     console.error('Error in getEmployeeById:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: err.message 
+      message: err.message
     });
   }
 };
@@ -223,32 +237,158 @@ export const getEmployeesByDepartment = async (req, res) => {
 };
 
 // 🔹 Login employee
+// export const loginEmployee = async (req, res) => {
+//   try {
+//     const { empId, password } = req.body;
+//     if (!empId || !password) {
+//       return res.status(400).json({ success: false, message: 'empId and password are required' });
+//     }
+
+//     const employee = await Employee.findOne({ empId }).select('+password');
+//     if (!employee) {
+//       return res.status(404).json({ success: false, message: 'Employee not found' });
+//     }
+
+//     const isMatch = await bcrypt.compare(password, employee.password);
+//     if (!isMatch) {
+//       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+//     }
+
+//     const token = jwt.sign(
+//       { empId: employee.empId, id: employee._id },
+//       process.env.JWT_SECRET || 'secret',
+//       { expiresIn: '7d' }
+//     );
+
+//     // Create activity record
+//     const now = new Date();
+//     await UserActivity.create({
+//       empId: employee.empId,
+//       date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+//       loginTime: now,
+//       status: 'active'
+//     });
+
+//     // Set cookie with token
+//     res.cookie('token', token, {
+//       httpOnly: true,
+//       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+//       sameSite: 'strict'
+//     });
+
+//     res.status(200).json({
+//       success: true,
+//       message: 'Login successful'
+//     });
+
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+
+
 export const loginEmployee = async (req, res) => {
   try {
     const { empId, password } = req.body;
     if (!empId || !password) {
-      return res.status(400).json({ message: 'empId and password are required' });
+      return res.status(400).json({ success: false, message: 'empId and password are required' });
     }
+
     const employee = await Employee.findOne({ empId }).select('+password');
     if (!employee) {
-      return res.status(404).json({ message: 'Employee not found' });
+      return res.status(404).json({ success: false, message: 'Employee not found' });
     }
+
     const isMatch = await bcrypt.compare(password, employee.password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
-    // Generate JWT token
-    const token = jwt.sign({ empId: employee.empId, id: employee._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    // Remove password from response
-    const employeeObj = employee.toObject();
-    delete employeeObj.password;
+
+    const token = jwt.sign(
+      { empId: employee.empId, id: employee._id },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '7d' }
+    );
+
+    const now = new Date();
+    await UserActivity.create({
+      empId: employee.empId,
+      date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+      loginTime: now,
+      status: 'active'
+    });
+
+    // Optional: You can still set the token as cookie if browser is involved
+    res.cookie('token', token, {
+      httpOnly: true,
+      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      sameSite: 'strict'
+    });
+
+    // ✅ Send employee details in response
     res.status(200).json({
-      message: 'Login successful',
+      success: true,
       token,
-      employee: employeeObj
+      employee: {
+        empId: employee.empId,
+        employeeName: employee.employeeName,
+        role: employee.role,
+        allowedModules: employee.allowedModules || []
+      }
+    });
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const logoutEmployee = async (req, res) => {
+  try {
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'You are already logged out'
+      });
+    }
+
+    const empId = req.user.empId;
+    const now = new Date();
+
+    // Update activity record
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const activity = await UserActivity.findOne({
+      empId,
+      date: today,
+      status: 'active'
+    });
+
+    if (activity) {
+      activity.logoutTime = now;
+      activity.status = 'completed';
+      // Calculate total hours
+      const hours = (now - activity.loginTime) / (1000 * 60 * 60);
+      activity.totalHours = parseFloat(hours.toFixed(2));
+      await activity.save();
+    }
+
+    // Clear the token cookie
+    res.cookie('token', null, {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+      sameSite: 'strict'
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Logout successful for employee ${empId}`
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
 
@@ -271,3 +411,172 @@ export const updateEmployeeStatus = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// New function to get daily activity report
+export const getDailyActivityReport = async (req, res) => {
+  try {
+    const { date } = req.query;
+    const queryDate = date ? new Date(date) : new Date();
+    const startOfDay = new Date(queryDate.getFullYear(), queryDate.getMonth(), queryDate.getDate());
+    const endOfDay = new Date(queryDate.getFullYear(), queryDate.getMonth(), queryDate.getDate() + 1);
+
+    const activities = await UserActivity.find({
+      date: {
+        $gte: startOfDay,
+        $lt: endOfDay
+      }
+    }).sort({ loginTime: 1 });
+
+    // Group activities by employee
+    const report = activities.reduce((acc, activity) => {
+      if (!acc[activity.empId]) {
+        acc[activity.empId] = {
+          empId: activity.empId,
+          totalHours: 0,
+          sessions: []
+        };
+      }
+
+      if (activity.logoutTime) {
+        acc[activity.empId].totalHours += activity.totalHours;
+        acc[activity.empId].sessions.push({
+          loginTime: formatDate(activity.loginTime),
+          logoutTime: formatDate(activity.logoutTime),
+          duration: activity.totalHours.toFixed(2) + ' hours'
+        });
+      }
+
+      return acc;
+    }, {});
+
+    res.status(200).json({
+      success: true,
+      date: formatDate(startOfDay),
+      report: Object.values(report)
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+// New function to get employee's activity history
+export const getEmployeeActivityHistory = async (req, res) => {
+  try {
+    const { empId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const query = { empId };
+    if (startDate && endDate) {
+      query.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    const activities = await UserActivity.find(query)
+      .sort({ date: -1, loginTime: -1 });
+
+    // Format the activities
+    const formattedActivities = activities.map(activity => ({
+      ...activity.toObject(),
+      date: formatDate(activity.date),
+      loginTime: formatDate(activity.loginTime),
+      logoutTime: activity.logoutTime ? formatDate(activity.logoutTime) : null,
+      totalHours: activity.totalHours ? activity.totalHours.toFixed(2) + ' hours' : null
+    }));
+
+    res.status(200).json({
+      success: true,
+      empId,
+      activities: formattedActivities
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+
+// 🔹 Update Role and Allowed Modules
+export const updateRoleAndModules = async (req, res) => {
+  try {
+    const { empId } = req.params;
+    const { role, allowedModules } = req.body;
+
+    if (!['superadmin', 'admin', 'employee'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role' });
+    }
+
+
+
+    const employee = await Employee.findOneAndUpdate(
+      { empId },
+      { role, allowedModules },
+      { new: true, runValidators: true }
+    );
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Role and allowed modules updated successfully',
+      employee
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 🔒 Assign role to an employee — Superadmin only
+export const assignRoleToEmployee = async (req, res) => {
+  try {
+    const requestingUser = req.user; // comes from auth middleware
+    const { empId } = req.params;
+    const { role } = req.body;
+
+    if (!requestingUser || requestingUser.role !== 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Only superadmin can assign roles.' });
+    }
+
+    if (!['employee', 'admin'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role. Must be "employee" or "admin".' });
+    }
+
+    const employee = await Employee.findOne({ empId });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found.' });
+    }
+
+    // ⚠️ Already has same role
+    if (employee.role === role) {
+      return res.status(200).json({
+        success: true,
+        message: `Employee already has role '${role}'`
+      });
+    }
+
+    // ✅ Assign role
+    employee.role = role;
+    await employee.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Role updated to ${role} for ${empId}`
+    });
+
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+
+

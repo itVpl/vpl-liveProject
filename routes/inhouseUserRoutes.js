@@ -1,5 +1,6 @@
 import express from 'express';
 import employeeUpload from '../middlewares/upload.js';
+import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import {
   createEmployee,
   getAllEmployees,
@@ -8,7 +9,12 @@ import {
   deleteEmployee,
   getEmployeesByDepartment,
   loginEmployee,
-  updateEmployeeStatus
+  updateEmployeeStatus,
+  logoutEmployee,
+  getDailyActivityReport,
+  getEmployeeActivityHistory,
+  updateRoleAndModules,
+  assignRoleToEmployee
 } from '../controllers/inhouseUserController.js';
 
 const router = express.Router();
@@ -41,16 +47,17 @@ router.put('/:empId', employeeUpload.fields([
   { name: 'bankStatementOrSalarySlip', maxCount: 10 }
 ]), updateEmployee);
 
-// 🔹 Delete Employee
 router.delete('/:id', deleteEmployee);
-
-// 🔹 Get Employees by Department
 router.get('/department/:department', getEmployeesByDepartment);
-
-// 🔹 Employee Login
 router.post('/login', loginEmployee);
-
-// 🔹 Update Employee Status (active/inactive)
 router.patch('/:empId/status', updateEmployeeStatus);
+router.post('/logout', isAuthenticatedEmployee, logoutEmployee);
+
+// New routes for activity reports
+router.get('/activity/daily', getDailyActivityReport);
+router.get('/activity/employee/:empId', getEmployeeActivityHistory);
+router.patch('/:empId/role-modules', updateRoleAndModules);
+router.patch('/assign-role/:empId', isAuthenticatedEmployee, assignRoleToEmployee);
+
 
 export default router;

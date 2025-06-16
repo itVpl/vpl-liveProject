@@ -15,6 +15,9 @@ import shipperDriverRouter from './routes/shipper_driverRoutes.js';
 import inhouseUserRouter from './routes/inhouseUserRoutes.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import breakRoutes from './routes/breakRoutes.js';
+import { checkOverdueBreaks } from './controllers/breakController.js';
+import moduleMasterRouter from './routes/moduleMasterRoutes.js';
 
 export const app = express();
 
@@ -65,6 +68,10 @@ app.use('/api/v1/bid', bidRouter);
 app.use('/api/v1/driver', driverRouter);
 app.use('/api/v1/shipper_driver', shipperDriverRouter);
 app.use('/api/v1/inhouseUser', inhouseUserRouter);
+app.use('/api/v1/break', breakRoutes);
+app.use('/api/v1/module', moduleMasterRouter);
+
+setInterval(checkOverdueBreaks, 60000);
 
 
 removeUnverifiedAccounts();
