@@ -19,11 +19,21 @@ export const addModule = async (req, res) => {
 };
 
 // 🔹 Get all modules
+// export const getAllModules = async (req, res) => {
+//     try {
+//         const includeAll = req.query.all === 'true';
+//         const filter = includeAll ? {} : { isActive: true };
+//         const modules = await ModuleMaster.find(filter);
+//         res.status(200).json({ success: true, modules });
+//     } catch (err) {
+//         res.status(500).json({ success: false, message: err.message });
+//     }
+// };
+
 export const getAllModules = async (req, res) => {
     try {
-        const includeAll = req.query.all === 'true';
-        const filter = includeAll ? {} : { isActive: true };
-        const modules = await ModuleMaster.find(filter);
+        // Superadmin ko sab module dikhenge — no filter
+        const modules = await ModuleMaster.find().sort({ createdAt: -1 });
         res.status(200).json({ success: true, modules });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

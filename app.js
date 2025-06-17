@@ -18,6 +18,8 @@ import { fileURLToPath } from 'url';
 import breakRoutes from './routes/breakRoutes.js';
 import { checkOverdueBreaks } from './controllers/breakController.js';
 import moduleMasterRouter from './routes/moduleMasterRoutes.js';
+import targetRouter from './routes/targetRoutes.js';
+import leaveRouter from './routes/leaveRoutes.js';
 
 export const app = express();
 
@@ -87,6 +89,8 @@ app.use('/api/v1/shipper_driver', shipperDriverRouter);
 app.use('/api/v1/inhouseUser', inhouseUserRouter);
 app.use('/api/v1/break', breakRoutes);
 app.use('/api/v1/module', moduleMasterRouter);
+app.use('/api/v1/target', targetRouter);
+app.use('/api/v1/leave', leaveRouter);
 
 setInterval(checkOverdueBreaks, 60000);
 
