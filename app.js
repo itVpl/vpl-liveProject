@@ -40,17 +40,34 @@ const allowedOrigins = [
     "http://localhost:5173"
 ];
 
+// app.use(cors({
+//     origin: function (origin, callback) {
+//         if (!origin || allowedOrigins.includes(origin)) {
+//             callback(null, true);
+//         } else {
+//             callback(new Error('Not allowed by CORS'));
+//         }
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+//     credentials: true
+// }));
+
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
+        if (!origin) return callback(null, true); // allow server-to-server or Postman
+      
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+          return callback(new Error('Not allowed by CORS'));
         }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    credentials: true
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+      optionsSuccessStatus: 200
+              
 }));
+
 
 // app.use(cors({
 //     origin: process.env.CLIENT_URL,
