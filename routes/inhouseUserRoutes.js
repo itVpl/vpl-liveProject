@@ -14,7 +14,8 @@ import {
   getDailyActivityReport,
   getEmployeeActivityHistory,
   updateRoleAndModules,
-  assignRoleToEmployee
+  assignRoleToEmployee,
+  assignModulesFromMaster
 } from '../controllers/inhouseUserController.js';
 
 const router = express.Router();
@@ -58,6 +59,7 @@ router.get('/activity/daily', getDailyActivityReport);
 router.get('/activity/employee/:empId', getEmployeeActivityHistory);
 router.patch('/:empId/role-modules', updateRoleAndModules);
 router.patch('/assign-role/:empId', isAuthenticatedEmployee, assignRoleToEmployee);
+router.patch('/assign-modules/:empId', isAuthenticatedEmployee, assignModulesFromMaster);
 
 
 export default router;

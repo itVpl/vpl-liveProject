@@ -42,7 +42,11 @@ const employeeSchema = new mongoose.Schema({
     enum: ['superadmin', 'admin', 'employee'],
     default: 'employee'
   },
-  allowedModules: [{ type: String }]
+  // allowedModules: [{ type: String }]
+  allowedModules: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ModuleMaster'
+  }]
 
 }, { timestamps: true });
 
