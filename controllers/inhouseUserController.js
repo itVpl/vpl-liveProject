@@ -323,13 +323,14 @@ export const loginEmployee = async (req, res) => {
     res.cookie('token', token, {
       httpOnly: true,
       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      sameSite: 'strict'
+      sameSite: 'None',
+      secure: true,
     });
 
     // ✅ Send employee details in response
     res.status(200).json({
       success: true,
-      token,
+      // token,
       employee: {
         empId: employee.empId,
         employeeName: employee.employeeName,
