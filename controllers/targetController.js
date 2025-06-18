@@ -31,6 +31,15 @@ export const getTargetsByEmployee = async (req, res) => {
     }
 };
 
+export const getAllTargets = async (req, res) => {
+    try {
+        const targets = await Target.find().sort({ date: -1 });
+        res.status(200).json({ success: true, total: targets.length, targets });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
 // ✅ Mark target as completed
 export const updateTargetStatus = async (req, res) => {
     try {
