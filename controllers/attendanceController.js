@@ -41,13 +41,14 @@ export const getAllAttendance = async (req, res) => {
     };
 
     const records = await UserActivity.find(filter).sort({ empId: 1 }).lean();
-    const allEmployees = await Employee.find({}, 'empId employeeName department');
+    const allEmployees = await Employee.find({}, 'empId employeeName department role');
 
     const empMap = {};
     allEmployees.forEach(emp => {
       empMap[emp.empId] = {
         name: emp.employeeName,
-        department: emp.department
+        department: emp.department,
+        role: emp.role
       };
     });
 
@@ -60,12 +61,14 @@ export const getAllAttendance = async (req, res) => {
       }
 
       return {
-        date,
+        date: formatDateOnly(r.date),
         empId: r.empId,
         empName: empMap[r.empId]?.name || '',
         department: empMap[r.empId]?.department || '',
+        role: empMap[r.empId]?.role || '',
         loginTime: r.loginTime ? formatDate(r.loginTime) : '-',
         logoutTime: r.logoutTime ? formatDate(r.logoutTime) : '-',
+        totalHours,
         status
       };
     });
@@ -77,10 +80,70 @@ export const getAllAttendance = async (req, res) => {
   }
 };
 
-// ✅ Helper function
+
+export const getAttendanceByDateRange = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ success: false, message: 'startDate and endDate are required' });
+    }
+
+    const start = startOfDay(new Date(startDate));
+    const end = endOfDay(new Date(endDate));
+
+    const records = await UserActivity.find({
+      date: {
+        $gte: start,
+        $lte: end
+      }
+    }).sort({ empId: 1, date: 1 }).lean();
+
+    const allEmployees = await Employee.find({}, 'empId employeeName department role');
+    const empMap = {};
+    allEmployees.forEach(emp => {
+      empMap[emp.empId] = {
+        name: emp.employeeName,
+        department: emp.department,
+        role: emp.role
+      };
+    });
+
+    const enriched = records.map(r => {
+      const totalHours = r.totalHours || 0;
+      let status = "absent";
+      if (r.loginTime && r.logoutTime) {
+        status = totalHours >= 8 ? "present" : "half day";
+      }
+
+      return {
+        date: formatDateOnly(r.date),
+        empId: r.empId,
+        empName: empMap[r.empId]?.name || '',
+        department: empMap[r.empId]?.department || '',
+        role: empMap[r.empId]?.role || '',
+        loginTime: r.loginTime ? formatDate(r.loginTime) : '-',
+        logoutTime: r.logoutTime ? formatDate(r.logoutTime) : '-',
+        totalHours,
+        status
+      };
+    });
+
+    res.status(200).json({ success: true, total: enriched.length, records: enriched });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ✅ Helper functions
 const formatDate = (d) => {
   return `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
+
+const formatDateOnly = (d) => {
+  return `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()}`;
+};
+
 
 // 🔹 Get Attendance by empId
 export const getEmployeeAttendance = async (req, res) => {

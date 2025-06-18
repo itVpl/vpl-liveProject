@@ -12,7 +12,7 @@ const router = express.Router();
 router.post('/assign', isAuthenticatedEmployee, assignTarget);
 router.get('/:empId', isAuthenticatedEmployee, getTargetsByEmployee);
 router.patch('/:id/status', isAuthenticatedEmployee, updateTargetStatus);
-router.get('/', isAuthenticatedEmployee, getAllTargets); // All targets
+router.get('/', isAuthenticatedEmployee, getAllTargets); 
 
 
 export default router;
