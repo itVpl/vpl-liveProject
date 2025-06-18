@@ -37,7 +37,7 @@ export const isAuthenticatedEmployee = catchAsyncError(async (req, res, next) =>
     const decodedData = jwt.verify(token, process.env.JWT_SECRET);
     const employee = await Employee.findById(decodedData.id);
 
-    console.log("✅ Logged-in User Department:", employee?.department);  // 👀 DEBUG
+    // console.log("✅ Logged-in User Department:", employee?.department);  // 👀 DEBUG
 
     if (!employee) {
         return next(new ErrorHandler("Employee not found", 404));

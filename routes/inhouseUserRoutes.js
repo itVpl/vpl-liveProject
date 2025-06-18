@@ -17,6 +17,7 @@ import {
   assignRoleToEmployee,
   assignModulesFromMaster
 } from '../controllers/inhouseUserController.js';
+import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
 const router = express.Router();
 
@@ -55,7 +56,8 @@ router.patch('/:empId/status', updateEmployeeStatus);
 router.post('/logout', isAuthenticatedEmployee, logoutEmployee);
 
 // New routes for activity reports
-router.get('/activity/daily', getDailyActivityReport);
+// router.get('/activity/daily', getDailyActivityReport);
+router.get('/activity/daily', isAuthenticatedEmployee, isHRDepartment, getDailyActivityReport);
 router.get('/activity/employee/:empId', getEmployeeActivityHistory);
 router.patch('/:empId/role-modules', updateRoleAndModules);
 router.patch('/assign-role/:empId', isAuthenticatedEmployee, assignRoleToEmployee);

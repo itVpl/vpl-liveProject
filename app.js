@@ -20,6 +20,8 @@ import { checkOverdueBreaks } from './controllers/breakController.js';
 import moduleMasterRouter from './routes/moduleMasterRoutes.js';
 import targetRouter from './routes/targetRoutes.js';
 import leaveRouter from './routes/leaveRoutes.js';
+import attendanceRouter from './routes/attendanceRoutes.js';
+import emailRouter from './routes/emailRoutes.js';
 
 export const app = express();
 
@@ -91,6 +93,8 @@ app.use('/api/v1/break', breakRoutes);
 app.use('/api/v1/module', moduleMasterRouter);
 app.use('/api/v1/target', targetRouter);
 app.use('/api/v1/leave', leaveRouter);
+app.use('/api/v1/attendance', attendanceRouter);
+app.use('/api/v1/email', emailRouter);
 
 setInterval(checkOverdueBreaks, 60000);
 
