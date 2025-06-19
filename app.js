@@ -22,6 +22,9 @@ import targetRouter from './routes/targetRoutes.js';
 import leaveRouter from './routes/leaveRoutes.js';
 import attendanceRouter from './routes/attendanceRoutes.js';
 import emailRouter from './routes/emailRoutes.js';
+import teamMemberRouter from './routes/teamMemberRoutes.js';
+import hygieneRouter from './routes/hygieneRoutes.js';
+
 
 export const app = express();
 
@@ -95,6 +98,9 @@ app.use('/api/v1/target', targetRouter);
 app.use('/api/v1/leave', leaveRouter);
 app.use('/api/v1/attendance', attendanceRouter);
 app.use('/api/v1/email', emailRouter);
+app.use('/api/v1/team', teamMemberRouter);
+app.use('/api/v1/hygiene', hygieneRouter);
+app.use('/api/v1/hygiene/self', hygieneRouter);
 
 setInterval(checkOverdueBreaks, 60000);
 
