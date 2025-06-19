@@ -42,6 +42,10 @@ const employeeSchema = new mongoose.Schema({
     enum: ['superadmin', 'admin', 'employee'],
     default: 'employee'
   },
+  docVerified: {
+    type: Boolean,
+    default: false
+  },
   // allowedModules: [{ type: String }]
   allowedModules: [{
     type: mongoose.Schema.Types.ObjectId,

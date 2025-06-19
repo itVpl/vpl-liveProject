@@ -15,7 +15,8 @@ import {
   getEmployeeActivityHistory,
   updateRoleAndModules,
   assignRoleToEmployee,
-  assignModulesFromMaster
+  assignModulesFromMaster,
+  updateDocVerifiedStatus
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -62,6 +63,6 @@ router.get('/activity/employee/:empId', getEmployeeActivityHistory);
 router.patch('/:empId/role-modules', updateRoleAndModules);
 router.patch('/assign-role/:empId', isAuthenticatedEmployee, assignRoleToEmployee);
 router.patch('/assign-modules/:empId', isAuthenticatedEmployee, assignModulesFromMaster);
-
+router.patch('/:empId/doc-verified', isAuthenticatedEmployee, updateDocVerifiedStatus);
 
 export default router;
