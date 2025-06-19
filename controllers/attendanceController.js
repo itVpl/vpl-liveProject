@@ -188,3 +188,44 @@ export const markAbsentEmployees = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+
+export const getMyAttendance = async (req, res) => {
+  try {
+    const empId = req.user.empId;
+    const { month } = req.query; // format: "2025-06"
+
+    if (!month) {
+      return res.status(400).json({ success: false, message: 'Month is required in YYYY-MM format' });
+    }
+
+    const records = await UserActivity.find({
+      empId,
+      date: {
+        $gte: new Date(`${month}-01T00:00:00Z`),
+        $lte: new Date(`${month}-31T23:59:59Z`)
+      }
+    }).sort({ date: 1 }).lean();
+
+    const enriched = records.map(r => {
+      const totalHours = r.totalHours || 0;
+      let status = "absent";
+
+      if (r.loginTime && r.logoutTime) {
+        status = totalHours >= 8 ? "present" : "half day";
+      }
+
+      return {
+        date: formatDateOnly(r.date),
+        loginTime: r.loginTime ? formatDate(r.loginTime) : '-',
+        logoutTime: r.logoutTime ? formatDate(r.logoutTime) : '-',
+        totalHours,
+        status
+      };
+    });
+
+    res.status(200).json({ success: true, empId, month, records: enriched });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
