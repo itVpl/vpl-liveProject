@@ -24,6 +24,7 @@ import attendanceRouter from './routes/attendanceRoutes.js';
 import emailRouter from './routes/emailRoutes.js';
 import teamMemberRouter from './routes/teamMemberRoutes.js';
 import hygieneRouter from './routes/hygieneRoutes.js';
+import payrollRouter from './routes/payrollRoutes.js';
 
 
 export const app = express();
@@ -101,6 +102,7 @@ app.use('/api/v1/email', emailRouter);
 app.use('/api/v1/team', teamMemberRouter);
 app.use('/api/v1/hygiene', hygieneRouter);
 app.use('/api/v1/hygiene/self', hygieneRouter);
+app.use('/api/v1/payroll', payrollRouter);
 
 setInterval(checkOverdueBreaks, 60000);
 
