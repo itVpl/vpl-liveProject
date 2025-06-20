@@ -53,3 +53,18 @@ export const deactivateModule = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+
+// 🔹 Activate module
+export const activateModule = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const module = await ModuleMaster.findByIdAndUpdate(id, { isActive: true }, { new: true });
+        if (!module) {
+            return res.status(404).json({ success: false, message: 'Module not found' });
+        }
+        res.status(200).json({ success: true, message: 'Module activated successfully' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};

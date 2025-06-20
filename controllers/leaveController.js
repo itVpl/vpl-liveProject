@@ -49,16 +49,29 @@ export const getAllLeaves = async (req, res) => {
 
 // 🔹 Get leaves of a specific employee (for HR)
 export const getLeavesByEmployee = async (req, res) => {
-    const { empId } = req.params;
-  
-    try {
-      const leaves = await LeaveRequest.find({ empId }).sort({ appliedAt: -1 });
-      res.status(200).json({
-        success: true,
-        empId,
-        leaves
-      });
-    } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  };
+  const { empId } = req.params;
+
+  try {
+    const leaves = await LeaveRequest.find({ empId }).sort({ appliedAt: -1 });
+    res.status(200).json({
+      success: true,
+      empId,
+      leaves
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+// 🔹 Get my leaves (for logged-in employee)
+export const getMyLeaves = async (req, res) => {
+  const empId = req.user.empId; // Assuming auth middleware attaches empId
+
+  try {
+    const leaves = await LeaveRequest.find({ empId }).sort({ appliedAt: -1 });
+    res.status(200).json({ success: true, leaves });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
