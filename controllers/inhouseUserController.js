@@ -107,10 +107,11 @@ export const createEmployee = async (req, res) => {
           // Ignore file delete errors
         }
       });
-      return res.status(500).json({ message: err.message });
+      return res.status(500).json({ success: false, message: err.message });
     }
 
     res.status(201).json({
+      success: true,
       message: 'Employee record created successfully',
       employee: newEmployee
     });
@@ -240,115 +241,6 @@ export const getEmployeesByDepartment = async (req, res) => {
 };
 
 // 🔹 Login employee
-// export const loginEmployee = async (req, res) => {
-//   try {
-//     const { empId, password } = req.body;
-//     if (!empId || !password) {
-//       return res.status(400).json({ success: false, message: 'empId and password are required' });
-//     }
-
-//     const employee = await Employee.findOne({ empId }).select('+password');
-//     if (!employee) {
-//       return res.status(404).json({ success: false, message: 'Employee not found' });
-//     }
-
-//     const isMatch = await bcrypt.compare(password, employee.password);
-//     if (!isMatch) {
-//       return res.status(401).json({ success: false, message: 'Invalid credentials' });
-//     }
-
-//     const token = jwt.sign(
-//       { empId: employee.empId, id: employee._id },
-//       process.env.JWT_SECRET || 'secret',
-//       { expiresIn: '7d' }
-//     );
-
-//     // Create activity record
-//     const now = new Date();
-//     await UserActivity.create({
-//       empId: employee.empId,
-//       date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-//       loginTime: now,
-//       status: 'active'
-//     });
-
-//     // Set cookie with token
-//     res.cookie('token', token, {
-//       httpOnly: true,
-//       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-//       sameSite: 'strict'
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       message: 'Login successful'
-//     });
-
-//   } catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// };
-
-
-
-// export const loginEmployee = async (req, res) => {
-//   try {
-//     const { empId, password } = req.body;
-//     if (!empId || !password) {
-//       return res.status(400).json({ success: false, message: 'empId and password are required' });
-//     }
-
-//     const employee = await Employee.findOne({ empId }).select('+password');
-//     if (!employee) {
-//       return res.status(404).json({ success: false, message: 'Employee not found' });
-//     }
-
-//     const isMatch = await bcrypt.compare(password, employee.password);
-//     if (!isMatch) {
-//       return res.status(401).json({ success: false, message: 'Invalid credentials' });
-//     }
-
-//     const token = jwt.sign(
-//       { empId: employee.empId, id: employee._id },
-//       process.env.JWT_SECRET || 'secret',
-//       { expiresIn: '7d' }
-//     );
-
-//     const now = new Date();
-//     await UserActivity.create({
-//       empId: employee.empId,
-//       date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-//       loginTime: now,
-//       status: 'active'
-//     });
-
-//     // Optional: You can still set the token as cookie if browser is involved
-//     res.cookie('token', token, {
-//       httpOnly: true,
-//       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-//       sameSite: 'None',
-//       secure: true,
-//     });
-
-//     // ✅ Send employee details in response
-//     res.status(200).json({
-//       success: true,
-//       // token,
-//       employee: {
-//         empId: employee.empId,
-//         employeeName: employee.employeeName,
-//         role: employee.role,
-//         allowedModules: employee.allowedModules || []
-//       }
-//     });
-
-//   } catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// };
-
-
-
 export const loginEmployee = async (req, res) => {
   try {
     const { empId, password } = req.body;
@@ -418,130 +310,6 @@ export const loginEmployee = async (req, res) => {
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// export const logoutEmployee = async (req, res) => {
-//   try {
-//     // Check if user is authenticated
-//     if (!req.user) {
-//       return res.status(401).json({
-//         success: false,
-//         message: 'You are already logged out'
-//       });
-//     }
-
-//     const empId = req.user.empId;
-//     const now = new Date();
-
-//     // Update activity record
-//     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-//     const activity = await UserActivity.findOne({
-//       empId,
-//       date: today,
-//       status: 'active'
-//     });
-
-//     if (activity) {
-//       activity.logoutTime = now;
-//       activity.status = 'completed';
-//       // Calculate total hours
-//       const hours = (now - activity.loginTime) / (1000 * 60 * 60);
-//       activity.totalHours = parseFloat(hours.toFixed(2));
-//       await activity.save();
-//     }
-
-//     // Clear the token cookie
-//     res.cookie('token', null, {
-//       expires: new Date(Date.now()),
-//       httpOnly: true,
-//       sameSite: 'strict'
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       message: `Logout successful for employee ${empId}`
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       success: false,
-//       message: err.message
-//     });
-//   }
-// };
-
-
-
-export const logoutEmployee = async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'You are already logged out'
-      });
-    }
-
-    const empId = req.user.empId;
-    const now = new Date();
-
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const activity = await UserActivity.findOne({
-      empId,
-      date: today,
-      status: 'active'
-    });
-
-    let formattedLogoutTime = null;
-    let employeeEmail = null;
-    let employeeName = null;
-
-    if (activity) {
-      activity.logoutTime = now;
-      activity.status = 'completed';
-      const hours = (now - activity.loginTime) / (1000 * 60 * 60);
-      activity.totalHours = parseFloat(hours.toFixed(2));
-      await activity.save();
-
-      // Format time for email
-      formattedLogoutTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1)
-        .toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes()
-        .toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-      // Get email & name for the employee
-      const { email, employeeName: name } = req.user;
-      employeeEmail = email;
-      employeeName = name;
-    }
-
-    // Clear cookie
-    res.cookie('token', null, {
-      expires: new Date(Date.now()),
-      httpOnly: true,
-      sameSite: 'strict'
-    });
-
-    // ✅ Send Logout Email
-    if (employeeEmail && employeeName && formattedLogoutTime) {
-      await sendEmail({
-        to: employeeEmail,
-        subject: `🚪 Logout Alert - ${employeeName}`,
-        html: logoutTemplate({
-          name: employeeName,
-          logoutTime: formattedLogoutTime
-        })
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: `Logout successful for employee ${empId}`
-    });
-
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
   }
 };
 
@@ -654,7 +422,6 @@ export const getEmployeeActivityHistory = async (req, res) => {
   }
 };
 
-
 // 🔹 Update Role and Allowed Modules
 export const updateRoleAndModules = async (req, res) => {
   try {
@@ -664,8 +431,6 @@ export const updateRoleAndModules = async (req, res) => {
     if (!['superadmin', 'admin', 'employee'].includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
-
-
 
     const employee = await Employee.findOneAndUpdate(
       { empId },
@@ -730,7 +495,6 @@ export const assignRoleToEmployee = async (req, res) => {
   }
 };
 
-
 // 🔒 Superadmin assigns allowed modules from ModuleMaster
 export const assignModulesFromMaster = async (req, res) => {
   const requestingUser = req.user;
@@ -762,7 +526,6 @@ export const assignModulesFromMaster = async (req, res) => {
   }
 };
 
-
 // 🔒 HR or Admin manually verifies doc status
 export const updateDocVerifiedStatus = async (req, res) => {
   try {
@@ -792,6 +555,79 @@ export const updateDocVerifiedStatus = async (req, res) => {
 
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const logoutEmployee = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'You are already logged out'
+      });
+    }
+
+    const empId = req.user.empId;
+    const now = new Date();
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const activity = await UserActivity.findOne({
+      empId,
+      date: today,
+      status: 'active'
+    });
+
+    let formattedLogoutTime = null;
+    let employeeEmail = null;
+    let employeeName = null;
+
+    if (activity) {
+      activity.logoutTime = now;
+      activity.status = 'completed';
+      const hours = (now - activity.loginTime) / (1000 * 60 * 60);
+      activity.totalHours = parseFloat(hours.toFixed(2));
+      await activity.save();
+
+      // Format time for email
+      formattedLogoutTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1)
+        .toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes()
+        .toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+      // Get email & name for the employee
+      const { email, employeeName: name } = req.user;
+      employeeEmail = email;
+      employeeName = name;
+    }
+
+    // Clear cookie
+    res.cookie('token', null, {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+      sameSite: 'strict'
+    });
+
+    // ✅ Send Logout Email
+    if (employeeEmail && employeeName && formattedLogoutTime) {
+      await sendEmail({
+        to: employeeEmail,
+        subject: `🚪 Logout Alert - ${employeeName}`,
+        html: logoutTemplate({
+          name: employeeName,
+          logoutTime: formattedLogoutTime
+        })
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Logout successful for employee ${empId}`
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
 

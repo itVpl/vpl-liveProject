@@ -10,7 +10,7 @@ export const registerDriver = async (req, res, next) => {
         } = req.body;
 
         const existing = await Driver.findOne({ email });
-        if (existing) return res.status(400).json({ message: 'Email already registered' });
+        if (existing) return res.status(400).json({ success: false, message: 'Email already registered' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -21,7 +21,7 @@ export const registerDriver = async (req, res, next) => {
         });
 
         await driver.save();
-        res.status(201).json({ message: 'Driver registered successfully', driver });
+        res.status(201).json({ success: true, message: 'Driver registered successfully', driver });
     } catch (err) {
         next(err);
     }
@@ -32,14 +32,15 @@ export const loginDriver = async (req, res, next) => {
         const { email, password } = req.body;
 
         const driver = await Driver.findOne({ email });
-        if (!driver) return res.status(404).json({ message: 'Driver not found' });
+        if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
 
         const isMatch = await bcrypt.compare(password, driver.password);
-        if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+        if (!isMatch) return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
         const token = jwt.sign({ id: driver._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         res.status(200).json({
+            success: true,
             message: 'Login successful',
             token,
             driver: {
