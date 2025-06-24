@@ -87,9 +87,9 @@ async function sendVerificationCode(
     if (verificationMethod === "email") {
       const message = generateEmailTemplate(verificationCode);
       await sendEmail({
-        email: email,
+        to: email,
         subject: "Verification Code",
-        message: message,
+        html: message,
       });
     } else if (verificationMethod === "phone") {
       const client = twilio(
@@ -262,9 +262,9 @@ export const forgetPassword = catchAsyncError(async (req, res, next) => {
 
   try {
     sendEmail({
-      email: user.email,
+      to: user.email,
       subject: "Reset Password",
-      message: message,
+      html: message,
     });
     res.status(200).json({
       success: true,

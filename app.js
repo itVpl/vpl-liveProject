@@ -10,6 +10,7 @@ import vehicleRouter from './routes/vehicleRouter.js';
 import { removeUnverifiedAccounts } from './automation/removeUnverifiedAccount.js';
 import loadRouter from './routes/loadRouter.js';
 import bidRouter from './routes/bidRouter.js';
+import loadBoardRouter from './routes/loadBoardRoutes.js';
 import driverRouter from './routes/driverRoutes.js';
 import shipperDriverRouter from './routes/shipper_driverRoutes.js';
 import inhouseUserRouter from './routes/inhouseUserRoutes.js';
@@ -25,6 +26,8 @@ import emailRouter from './routes/emailRoutes.js';
 import teamMemberRouter from './routes/teamMemberRoutes.js';
 import hygieneRouter from './routes/hygieneRoutes.js';
 import payrollRouter from './routes/payrollRoutes.js';
+import analytics8x8Routes from './routes/analytics8x8Routes.js';
+import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
 
 
 export const app = express();
@@ -90,6 +93,7 @@ app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
 app.use('/api/v1/load', loadRouter);
 app.use('/api/v1/bid', bidRouter);
+app.use('/api/v1/loadboard', loadBoardRouter);
 app.use('/api/v1/driver', driverRouter);
 app.use('/api/v1/shipper_driver', shipperDriverRouter);
 app.use('/api/v1/inhouseUser', inhouseUserRouter);
@@ -103,6 +107,8 @@ app.use('/api/v1/team', teamMemberRouter);
 app.use('/api/v1/hygiene', hygieneRouter);
 app.use('/api/v1/hygiene/self', hygieneRouter);
 app.use('/api/v1/payroll', payrollRouter);
+app.use('/api/v1/analytics/8x8', analytics8x8Routes); 
+app.use('/api/v1/dailytask', dailyTaskRoutes);
 
 setInterval(checkOverdueBreaks, 60000);
 

@@ -1,11 +1,28 @@
 import express from 'express';
-import { registerDriver, loginDriver, getAllDrivers, getDriverById, updateDriver, deleteDriver } from '../controllers/driverController.js';
+import { 
+    registerDriver, 
+    loginDriver, 
+    getAllDrivers, 
+    getDriverById, 
+    updateDriver, 
+    deleteDriver,
+    getDriversByTrucker 
+} from '../controllers/driverController.js';
+import { isAuthenticatedUser } from '../middlewares/auth.js';
+
 const driverRouter = express.Router();
-driverRouter.post('/register', registerDriver);
+
+// Public routes
 driverRouter.post('/login', loginDriver);
-driverRouter.get('/all', getAllDrivers);
-driverRouter.get('/:id', getDriverById);
-driverRouter.put('/:id', updateDriver);
-driverRouter.delete('/:id', deleteDriver);
+
+// Protected routes - Only truckers can access
+driverRouter.post('/register', isAuthenticatedUser, registerDriver);
+driverRouter.get('/my-drivers', isAuthenticatedUser, getDriversByTrucker); 
+driverRouter.get('/:id', isAuthenticatedUser, getDriverById);
+driverRouter.put('/:id', isAuthenticatedUser, updateDriver);
+driverRouter.delete('/:id', isAuthenticatedUser, deleteDriver);
+
+// Admin routes - For admin/super admin to see all drivers
+driverRouter.get('/all', isAuthenticatedUser, getAllDrivers);
 
 export default driverRouter;

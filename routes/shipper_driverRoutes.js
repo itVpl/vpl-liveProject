@@ -1,11 +1,30 @@
 import express from 'express';
-import upload from '../middlewares/upload.js';
-import { registerUser, getAllUsers, getAllShippers, getAllTruckers } from '../controllers/shipper_driverController.js';
+import { shipperTruckerUpload } from '../middlewares/upload.js';
+import { 
+  registerUser, 
+  getAllUsers, 
+  getAllShippers,   
+  getAllTruckers, 
+  loginUser,    
+  simpleStatusUpdate
+} from '../controllers/shipper_driverController.js';
+import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/register', upload.single('docUpload'), registerUser);
+// Public routes
+router.post('/register', shipperTruckerUpload.single('docUpload'), registerUser);
+router.post('/login', loginUser);
+
+// General routes
 router.get('/', getAllUsers);
 router.get('/shippers', getAllShippers);
 router.get('/truckers', getAllTruckers);
+
+router.patch('/simple-status/:userId', simpleStatusUpdate);
+
+
+
+
+
 export default router;

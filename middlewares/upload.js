@@ -12,6 +12,12 @@ if (!fs.existsSync(baseUploadPath)) {
   fs.mkdirSync(baseUploadPath, { recursive: true });
 }
 
+// 🔥 New: Shipper/Trucker upload path
+const shipperTruckerBasePath = path.join(__dirname, '../uploads/shipperTruckerData');
+if (!fs.existsSync(shipperTruckerBasePath)) {
+  fs.mkdirSync(shipperTruckerBasePath, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     // Try to get empId from multiple places
@@ -38,6 +44,33 @@ const storage = multer.diskStorage({
   },
 });
 
+// 🔥 New: Shipper/Trucker storage
+const shipperTruckerStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // Get company name or email for folder name
+    let folderName = req.body.compName || req.body.email || 'unknown';
+    
+    // Clean folder name (remove special characters)
+    folderName = folderName.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    // Add userType to folder name
+    const userType = req.body.userType || 'unknown';
+    const finalFolderName = `${userType}_${folderName}`;
+    
+    const companyFolder = path.join(shipperTruckerBasePath, finalFolderName);
+    if (!fs.existsSync(companyFolder)) {
+      fs.mkdirSync(companyFolder, { recursive: true });
+    }
+    cb(null, companyFolder);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const timestamp = Date.now();
+    const filename = `${file.fieldname}_${timestamp}${ext}`;
+    cb(null, filename);
+  },
+});
+
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /pdf|jpg|jpeg|png/;
   const ext = path.extname(file.originalname).toLowerCase();
@@ -49,6 +82,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const employeeUpload = multer({ storage, fileFilter });
+const shipperTruckerUpload = multer({ storage: shipperTruckerStorage, fileFilter });
 
 const normalizePath = (filePath) => {
   const relBase = 'uploads' + path.sep + 'employeeData';
@@ -59,6 +93,18 @@ const normalizePath = (filePath) => {
   }
   return relPath.split(path.sep).join('/');
 };
-export { normalizePath };
 
+// 🔥 New: Normalize shipper/trucker path
+const normalizeShipperTruckerPath = (filePath) => {
+  const relBase = 'uploads' + path.sep + 'shipperTruckerData';
+  const idx = filePath.indexOf(relBase);
+  let relPath = filePath;
+  if (idx !== -1) {
+    relPath = filePath.substring(idx);
+  }
+  return relPath.split(path.sep).join('/');
+};
+
+export { normalizePath, normalizeShipperTruckerPath };
+export { shipperTruckerUpload };
 export default employeeUpload;

@@ -1,20 +1,32 @@
 import express from 'express';
 import {
   placeBid,
+  updateBid,
   getBidsForLoad,
   updateBidStatus,
+  getTruckerBids,
+  withdrawBid,
+  getBidStats,
+  testUserLoads,
 } from '../controllers/bidController.js';
-import { isAuthenticatedUser } from '../middlewares/auth.js';
+import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
 
 const bidRouter = express.Router();
 
-// Carrier places bid
-bidRouter.post('/place', isAuthenticatedUser, placeBid);
+// Test endpoint for debugging
+bidRouter.get('/test-user-loads', isShipper, testUserLoads);
 
-// Shipper gets all bids for a specific load
-bidRouter.get('/load/:loadId', isAuthenticatedUser, getBidsForLoad);
+// Statistics Route (Public)
+bidRouter.get('/stats', getBidStats);
 
-// Shipper updates bid status
-bidRouter.put('/:bidId/status', isAuthenticatedUser, updateBidStatus);
+// Specific routes first (before parameterized routes)
+bidRouter.post('/place', isTrucker, placeBid); // Only truckers can place bids
+bidRouter.get('/load/:loadId', isShipper, getBidsForLoad); // Only shippers can view bids for their loads
+bidRouter.get('/trucker', isTrucker, getTruckerBids); // Only truckers can view their bids
+
+// Parameterized routes last
+bidRouter.put('/:bidId', isTrucker, updateBid); // Only truckers can update their bids
+bidRouter.put('/:bidId/status', isShipper, updateBidStatus); // Only shippers can accept/reject bids
+bidRouter.delete('/:bidId', isTrucker, withdrawBid); // Only truckers can withdraw their bids
 
 export default bidRouter;

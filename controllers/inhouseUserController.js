@@ -25,6 +25,9 @@ const formatDate = (date) => {
 // 🔹 Create new employee
 export const createEmployee = async (req, res) => {
   try {
+    console.log('🔍 Request body:', req.body);
+    console.log('📁 Request files:', req.files);
+    
     const {
       empId,
       employeeName,
@@ -55,6 +58,15 @@ export const createEmployee = async (req, res) => {
     const offerLetterPath = req.files && req.files.offerLetter ? normalizePath(req.files.offerLetter[0].path) : undefined;
     const experienceLetterPath = req.files && req.files.experienceLetter ? normalizePath(req.files.experienceLetter[0].path) : undefined;
     const bankStatementOrSalarySlipPaths = req.files && req.files.bankStatementOrSalarySlip ? req.files.bankStatementOrSalarySlip.map(f => normalizePath(f.path)) : [];
+
+    console.log('📄 File paths:');
+    console.log('Pan Card:', pancardPath);
+    console.log('Aadhar Card:', aadharcardPath);
+    console.log('Educational Docs:', educationalDocsPaths);
+    console.log('Release Letter:', releaseLetterPath);
+    console.log('Offer Letter:', offerLetterPath);
+    console.log('Experience Letter:', experienceLetterPath);
+    console.log('Bank Statement:', bankStatementOrSalarySlipPaths);
 
     const newEmployeeData = {
       empId,
@@ -241,12 +253,98 @@ export const getEmployeesByDepartment = async (req, res) => {
 };
 
 // 🔹 Login employee
+// export const loginEmployee = async (req, res) => {
+//   try {
+//     const { empId, password } = req.body;
+//     if (!empId || !password) {
+//       return res.status(400).json({ success: false, message: 'empId and password are required' });
+//     }
+
+//     const employee = await Employee.findOne({ empId }).select('+password');
+//     if (!employee) {
+//       return res.status(404).json({ success: false, message: 'Employee not found' });
+//     }
+
+//     const isMatch = await bcrypt.compare(password, employee.password);
+//     if (!isMatch) {
+//       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+//     }
+
+//     const token = jwt.sign(
+//       { empId: employee.empId, id: employee._id },
+//       process.env.JWT_SECRET || 'secret',
+//       { expiresIn: '7d' }
+//     );
+
+//     const now = new Date();
+//     await UserActivity.create({
+//       empId: employee.empId,
+//       date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+//       loginTime: now,
+//       status: 'active'
+//     });
+
+//     // ✅ Format login time
+//     const formattedLoginTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1)
+//       .toString()
+//       .padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes()
+//       .toString()
+//       .padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+//     // ✅ Send Email on Login
+//     await sendEmail({
+//       to: employee.email,
+//       subject: `🔔 Login Alert - ${employee.employeeName}`,
+//       html: loginTemplate({
+//         name: employee.employeeName,
+//         loginTime: formattedLoginTime
+//       })
+//     });
+
+//     // ✅ Set Cookie
+//     res.cookie('token', token, {
+//       httpOnly: true,
+//       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+//       sameSite: 'None',
+//       secure: true,
+//     });
+
+//     res.status(200).json({
+//       success: true,
+//       employee: {
+//         empId: employee.empId,
+//         employeeName: employee.employeeName,
+//         role: employee.role,
+//         allowedModules: employee.allowedModules || []
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error("Login error:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// 🔹 Login employee
 export const loginEmployee = async (req, res) => {
   try {
     const { empId, password } = req.body;
     if (!empId || !password) {
       return res.status(400).json({ success: false, message: 'empId and password are required' });
     }
+
+    // Check if employee already logged in
+    // const existingActiveSession = await UserActivity.findOne({
+    //   empId,
+    //   status: 'active'
+    // });
+
+    // if (existingActiveSession) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: 'You are already logged in from another device. Please logout first.'
+    //   });
+    // }
 
     const employee = await Employee.findOne({ empId }).select('+password');
     if (!employee) {
@@ -272,14 +370,12 @@ export const loginEmployee = async (req, res) => {
       status: 'active'
     });
 
-    // ✅ Format login time
     const formattedLoginTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1)
       .toString()
       .padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes()
       .toString()
       .padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
-    // ✅ Send Email on Login
     await sendEmail({
       to: employee.email,
       subject: `🔔 Login Alert - ${employee.employeeName}`,
@@ -289,7 +385,6 @@ export const loginEmployee = async (req, res) => {
       })
     });
 
-    // ✅ Set Cookie
     res.cookie('token', token, {
       httpOnly: true,
       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -312,6 +407,7 @@ export const loginEmployee = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
 
 // 🔹 Update user status (active/inactive)
 export const updateEmployeeStatus = async (req, res) => {

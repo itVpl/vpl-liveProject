@@ -8,7 +8,7 @@ const bidSchema = new mongoose.Schema({
     },
     carrier: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Driver',
+        ref: 'ShipperDriver',
         required: true,
     },
     rate: {
@@ -19,16 +19,51 @@ const bidSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    estimatedPickupDate: {
+        type: Date,
+        required: true,
+    },
+    estimatedDeliveryDate: {
+        type: Date,
+        required: true,
+    },
     status: {
         type: String,
         enum: ['Pending', 'Accepted', 'Rejected'],
         default: 'Pending',
     },
+    rejectionReason: {
+        type: String,
+        default: '',
+    },
+    acceptedAt: {
+        type: Date,
+        default: null,
+    },
+    rejectedAt: {
+        type: Date,
+        default: null,
+    },
     createdAt: {
         type: Date,
         default: Date.now,
     },
-})
+    updatedAt: {
+        type: Date,
+        default: Date.now,
+    },
+});
+
+// Update the updatedAt field before saving
+bidSchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    next();
+});
+
+// Index for better query performance
+bidSchema.index({ load: 1, carrier: 1 });
+bidSchema.index({ carrier: 1, status: 1 });
+bidSchema.index({ load: 1, status: 1 });
 
 const Bid = mongoose.model("Bid", bidSchema);
 export default Bid;

@@ -17,6 +17,18 @@ const shipperDriverSchema = new mongoose.Schema({
     enum: ['pending', 'approved', 'rejected'],
     default: 'pending',
   },
+  statusUpdatedBy: {
+    type: String,
+    default: null
+  },
+  statusUpdatedAt: {
+    type: Date,
+    default: null
+  },
+  statusReason: {
+    type: String,
+    default: null
+  },
   compName: String,
   mc_dot_no: String,
   carrierType: String,
