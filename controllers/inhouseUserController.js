@@ -8,6 +8,7 @@ import { UserActivity } from '../models/userActivityModel.js';
 import { loginTemplate } from '../utils/templates/loginTemplate.js';
 import { logoutTemplate } from '../utils/templates/logoutTemplate.js';
 import { sendEmail } from '../utils/sendEmail.js';
+import Meeting from '../models/Meeting.js';
 
 // Helper function to format date
 const formatDate = (date) => {
@@ -253,98 +254,12 @@ export const getEmployeesByDepartment = async (req, res) => {
 };
 
 // 🔹 Login employee
-// export const loginEmployee = async (req, res) => {
-//   try {
-//     const { empId, password } = req.body;
-//     if (!empId || !password) {
-//       return res.status(400).json({ success: false, message: 'empId and password are required' });
-//     }
-
-//     const employee = await Employee.findOne({ empId }).select('+password');
-//     if (!employee) {
-//       return res.status(404).json({ success: false, message: 'Employee not found' });
-//     }
-
-//     const isMatch = await bcrypt.compare(password, employee.password);
-//     if (!isMatch) {
-//       return res.status(401).json({ success: false, message: 'Invalid credentials' });
-//     }
-
-//     const token = jwt.sign(
-//       { empId: employee.empId, id: employee._id },
-//       process.env.JWT_SECRET || 'secret',
-//       { expiresIn: '7d' }
-//     );
-
-//     const now = new Date();
-//     await UserActivity.create({
-//       empId: employee.empId,
-//       date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-//       loginTime: now,
-//       status: 'active'
-//     });
-
-//     // ✅ Format login time
-//     const formattedLoginTime = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1)
-//       .toString()
-//       .padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes()
-//       .toString()
-//       .padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-//     // ✅ Send Email on Login
-//     await sendEmail({
-//       to: employee.email,
-//       subject: `🔔 Login Alert - ${employee.employeeName}`,
-//       html: loginTemplate({
-//         name: employee.employeeName,
-//         loginTime: formattedLoginTime
-//       })
-//     });
-
-//     // ✅ Set Cookie
-//     res.cookie('token', token, {
-//       httpOnly: true,
-//       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-//       sameSite: 'None',
-//       secure: true,
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       employee: {
-//         empId: employee.empId,
-//         employeeName: employee.employeeName,
-//         role: employee.role,
-//         allowedModules: employee.allowedModules || []
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error("Login error:", err);
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// };
-
-// 🔹 Login employee
 export const loginEmployee = async (req, res) => {
   try {
     const { empId, password } = req.body;
     if (!empId || !password) {
       return res.status(400).json({ success: false, message: 'empId and password are required' });
     }
-
-    // Check if employee already logged in
-    // const existingActiveSession = await UserActivity.findOne({
-    //   empId,
-    //   status: 'active'
-    // });
-
-    // if (existingActiveSession) {
-    //   return res.status(403).json({
-    //     success: false,
-    //     message: 'You are already logged in from another device. Please logout first.'
-    //   });
-    // }
 
     const employee = await Employee.findOne({ empId }).select('+password');
     if (!employee) {
@@ -407,7 +322,6 @@ export const loginEmployee = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 
 // 🔹 Update user status (active/inactive)
 export const updateEmployeeStatus = async (req, res) => {
@@ -724,6 +638,59 @@ export const logoutEmployee = async (req, res) => {
       success: false,
       message: err.message
     });
+  }
+};
+
+// Schedule a new meeting
+export const createMeeting = async (req, res) => {
+  try {
+    const { meetingDate, meetingTime, subject, location } = req.body;
+    if (!meetingDate || !meetingTime || !subject) {
+      return res.status(400).json({ success: false, message: 'All fields are required' });
+    }
+    const meeting = await Meeting.create({
+      user: req.user._id,
+      meetingDate,
+      meetingTime,
+      subject,
+      location
+    });
+    res.status(201).json({ success: true, meeting });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to schedule meeting', error: error.message });
+  }
+};
+
+// getMeetings Controller (Recommended)
+export const getMeetings = async (req, res) => {
+  try {
+    const empId = req.user.empId; // fetched from token/middleware
+    const employee = await Employee.findOne({ empId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: `Employee with empId ${empId} not found` });
+    }
+
+    const meetings = await Meeting.find({ empId });
+    return res.status(200).json({ success: true, meetings });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// Get all meetings for a given employee by empId (for admin/HR)
+export const getMeetingsByEmpId = async (req, res) => {
+  try {
+    const { empId } = req.params;
+    const employee = await Employee.findOne({ empId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: `Employee with empId ${empId} not found` });
+    }
+    const meetings = await Meeting.find({ user: employee._id }).sort({ meetingDate: 1, meetingTime: 1 });
+    return res.status(200).json({ success: true, meetings });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 

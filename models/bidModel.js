@@ -29,8 +29,12 @@ const bidSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Pending', 'Accepted', 'Rejected'],
-        default: 'Pending',
+        enum: ['PendingApproval', 'Pending', 'Accepted', 'Rejected'],
+        default: 'PendingApproval',
+    },
+    intermediateRate: {
+        type: Number,
+        default: null,
     },
     rejectionReason: {
         type: String,
@@ -51,6 +55,34 @@ const bidSchema = new mongoose.Schema({
     updatedAt: {
         type: Date,
         default: Date.now,
+    },
+    driverName: {
+        type: String,
+        default: '',
+    },
+    driverPhone: {
+        type: String,
+        default: '',
+    },
+    vehicleNumber: {
+        type: String,
+        default: '',
+    },
+    vehicleType: {
+        type: String,
+        default: '',
+    },
+    doDocument: {
+        type: String,
+        default: '',
+    },
+    opsApproved: {
+        type: Boolean,
+        default: false,
+    },
+    opsApprovedAt: {
+        type: Date,
+        default: null,
     },
 });
 

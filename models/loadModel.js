@@ -7,12 +7,18 @@ const loadSchema = new mongoose.Schema({
     required: true,
   },
   origin: {
+    addressLine1: { type: String },
+    addressLine2: { type: String },
     city: { type: String, required: true },
     state: { type: String, required: true },
+    zip: { type: String },
   },
   destination: {
+    addressLine1: { type: String },
+    addressLine2: { type: String },
     city: { type: String, required: true },
     state: { type: String, required: true },
+    zip: { type: String },
   },
   weight: {
     type: Number,
@@ -64,7 +70,10 @@ const loadSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-  
+  shipmentNumber: {
+    type: String,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -73,11 +82,41 @@ const loadSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  loadType: {
+    type: String,
+    enum: ['OTR', 'DRAYAGE'],
+    required: true,
+  },
+  containerNo: {
+    type: String,
+    default: '',
+  },
+  poNumber: {
+    type: String,
+    default: '',
+  },
+  bolNumber: {
+    type: String,
+    default: '',
+  },
+  returnDate: {
+    type: Date,
+    default: null,
+  },
+  returnLocation: {
+    type: String,
+    default: '',
+  },
 });
 
 // Update the updatedAt field before saving
 loadSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
+  if (this.loadType === 'DRAYAGE') {
+    if (!this.returnDate || !this.returnLocation) {
+      return next(new Error('returnDate and returnLocation are required for DRAYAGE loads.'));
+    }
+  }
   next();
 });
 

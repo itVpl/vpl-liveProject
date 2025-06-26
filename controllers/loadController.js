@@ -1,6 +1,8 @@
 import { Load } from '../models/loadModel.js';
 import Bid from '../models/bidModel.js';
 import mongoose from 'mongoose';
+import ShipperDriver from '../models/shipper_driverModel.js';
+import { sendEmail } from '../utils/sendEmail.js';
 
 // ✅ Shipper creates a new load
 export const createLoad = async (req, res, next) => {
@@ -9,8 +11,18 @@ export const createLoad = async (req, res, next) => {
             fromCity, fromState,
             toCity, toState,
             weight, commodity, vehicleType, pickupDate, deliveryDate, rate, rateType,
-            bidDeadline
+            bidDeadline,
+            loadType, // 'OTR' or 'DRAYAGE'
+            containerNo, poNumber, bolNumber,
+            returnDate, returnLocation
         } = req.body;
+
+        if (!loadType || !['OTR', 'DRAYAGE'].includes(loadType)) {
+            return res.status(400).json({ success: false, message: 'loadType (OTR or DRAYAGE) is required.' });
+        }
+        if (loadType === 'DRAYAGE' && (!returnDate || !returnLocation)) {
+            return res.status(400).json({ success: false, message: 'returnDate and returnLocation are required for DRAYAGE loads.' });
+        }
 
         const newLoad = new Load({
             shipper: req.user._id,
@@ -29,10 +41,52 @@ export const createLoad = async (req, res, next) => {
             deliveryDate,
             rate,
             rateType,
-            bidDeadline
+            bidDeadline,
+            loadType,
+            containerNo,
+            poNumber,
+            bolNumber,
+            returnDate: loadType === 'DRAYAGE' ? returnDate : null,
+            returnLocation: loadType === 'DRAYAGE' ? returnLocation : '',
         });
 
         await newLoad.save();
+
+        // Send email notification to all approved truckers
+        try {
+            const truckers = await ShipperDriver.find({ userType: 'trucker', status: 'approved' }, 'email compName');
+            const subject = `New Load Posted by Shipper`;
+            const html = `
+                <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                  <h2 style="color: #2a7ae2; text-align: center;">🚚 New Load Posted!</h2>
+                  <p style="font-size: 16px; color: #333;">A new load has been posted by a shipper. Check out the details below and place your bid!</p>
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Load Details</th></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">From:</td><td style="padding: 8px;">${fromCity}, ${fromState}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">To:</td><td style="padding: 8px;">${toCity}, ${toState}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Commodity:</td><td style="padding: 8px;">${commodity}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Vehicle Type:</td><td style="padding: 8px;">${vehicleType}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Weight:</td><td style="padding: 8px;">${weight} kg</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Pickup Date:</td><td style="padding: 8px;">${pickupDate ? new Date(pickupDate).toLocaleDateString() : ''}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Delivery Date:</td><td style="padding: 8px;">${deliveryDate ? new Date(deliveryDate).toLocaleDateString() : ''}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Load Type:</td><td style="padding: 8px;">${loadType}</td></tr>
+                    ${loadType === 'DRAYAGE' ? `<tr><td style='padding: 8px; font-weight: bold;'>Return Date:</td><td style='padding: 8px;'>${returnDate ? new Date(returnDate).toLocaleDateString() : ''}</td></tr>` : ''}
+                    ${loadType === 'DRAYAGE' ? `<tr><td style='padding: 8px; font-weight: bold;'>Return Location:</td><td style='padding: 8px;'>${returnLocation}</td></tr>` : ''}
+                  </table>
+                  <p style="font-size: 15px; color: #555;">Login to your <a href='https://vpl.com' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> to place a bid!</p>
+                </div>
+            `;
+            for (const trucker of truckers) {
+                await sendEmail({
+                    to: trucker.email,
+                    subject,
+                    html
+                });
+            }
+            console.log(`📧 Notification sent to ${truckers.length} truckers.`);
+        } catch (emailErr) {
+            console.error('❌ Error sending trucker notifications:', emailErr);
+        }
 
         res.status(201).json({
             success: true,

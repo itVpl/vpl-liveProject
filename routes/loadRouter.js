@@ -13,6 +13,7 @@ import {
     testLoadModel
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper } from '../middlewares/auth.js';
+import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid } from '../controllers/bidController.js';
 
 const loadRouter = express.Router();
 
@@ -34,5 +35,14 @@ loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads); // Truckers ca
 loadRouter.get('/:id', getLoadDetails); // Public route for load details
 loadRouter.put('/:id/status', isAuthenticatedUser, updateLoadStatus); // Both can update status
 loadRouter.delete('/:id', isShipper, cancelLoad); // Only shippers can cancel loads
+
+// Tracking location update route
+loadRouter.post('/:loadId/location', isAuthenticatedUser, updateTrackingLocationBid);
+
+// Tracking status update route
+loadRouter.post('/:loadId/status', isAuthenticatedUser, updateTrackingStatusBid);
+
+// Trip (tracking) details route
+loadRouter.get('/:loadId/trip', isAuthenticatedUser, getTrackingDetailsBid);
 
 export default loadRouter;

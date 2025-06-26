@@ -8,8 +8,14 @@ import {
   withdrawBid,
   getBidStats,
   testUserLoads,
+  approveBidIntermediate,
+  approveBidIntermediateAuto,
+  getAcceptedBidsForTrucker,
+  assignDriverAndVehicle,
+  approveBidByOps
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
+import { shipperTruckerUpload } from '../middlewares/upload.js';
 
 const bidRouter = express.Router();
 
@@ -26,7 +32,18 @@ bidRouter.get('/trucker', isTrucker, getTruckerBids); // Only truckers can view 
 
 // Parameterized routes last
 bidRouter.put('/:bidId', isTrucker, updateBid); // Only truckers can update their bids
-bidRouter.put('/:bidId/status', isShipper, updateBidStatus); // Only shippers can accept/reject bids
+bidRouter.put('/:bidId/status', isShipper, shipperTruckerUpload.single('doDocument'), updateBidStatus); // Only shippers can accept/reject bids
 bidRouter.delete('/:bidId', isTrucker, withdrawBid); // Only truckers can withdraw their bids
+
+// Add intermediate approval route (should be protected in production)
+bidRouter.put('/intermediate/:bidId/approve', approveBidIntermediate);
+// Add auto-approve with 5% markup route
+bidRouter.put('/intermediate/:bidId/auto-approve', approveBidIntermediateAuto);
+
+bidRouter.get('/accepted', isTrucker, getAcceptedBidsForTrucker); // Only truckers can view their accepted bids
+
+bidRouter.post('/:bidId/assign-driver', isTrucker, assignDriverAndVehicle); // Trucker assigns driver/vehicle details
+
+bidRouter.put('/:bidId/approve', approveBidByOps); // Employee approves bid (basic, no auth)
 
 export default bidRouter;

@@ -21,34 +21,7 @@ export const getCallRecords = async (req, res) => {
       }
     );
 
-    // const tokenRes = await axios.post(
-    //   'https://api.8x8.com/analytics/work/v1/oauth/token',
-    //   qs.stringify({
-    //     grant_type: 'client_credentials',
-    //     client_id: 'eght_OTI3M2RlYjgtNGE1Zi00MTI1LTk0OTAtMGMwOWNjOTBkY2Mw',
-    //     client_secret: 'Zjk4OTUxMzAtZWNlOC00OTY2LTliZjQtMDM3NTcxM2FkNjFj'
-    //   }),
-    //   {
-    //     headers: {
-    //       'Content-Type': 'application/x-www-form-urlencoded'
-    //     }
-    //   }
-    // );
-
-
-    // const tokenRes = await axios.post(
-    //   'https://api.8x8.com/analytics/work/v1/oauth/token',
-    //   qs.stringify({
-    //     grant_type: 'client_credentials',
-    //     client_id: 'eght_OTI3M2RlYjgtNGE1Zi00MTI1LTk0OTAtMGMwOWNjOTBkY2Mw',
-    //     client_secret: 'Zjk4OTUxMzAtZWNlOC00OTY2LTliZjQtMDM3NTcxM2FkNjFj'
-    //   }),
-    //   {
-    //     headers: {
-    //       'Content-Type': 'application/x-www-form-urlencoded'
-    //     }
-    //   }
-    // );
+   
 
     const accessToken = tokenRes.data.access_token;
     console.log('✅ Token received');

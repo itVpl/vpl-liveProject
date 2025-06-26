@@ -1,5 +1,9 @@
 import Bid from "../models/bidModel.js";
 import { Load } from "../models/loadModel.js";
+import ShipperDriver from '../models/shipper_driverModel.js';
+import { sendEmail } from '../utils/sendEmail.js';
+import Tracking from '../models/Tracking.js';
+import { getLatLngFromAddress } from '../utils/geocode.js';
 
 // ✅ Carrier places a bid
 export const placeBid = async (req, res, next) => {
@@ -42,6 +46,8 @@ export const placeBid = async (req, res, next) => {
             message,
             estimatedPickupDate,
             estimatedDeliveryDate,
+            status: 'PendingApproval',
+            intermediateRate: null
         });
 
         await bid.save();
@@ -54,7 +60,7 @@ export const placeBid = async (req, res, next) => {
 
         res.status(201).json({
             success: true,
-            message: 'Bid placed successfully',
+            message: 'Bid placed successfully and is pending approval',
             bid,
         });
     } catch (error) {
@@ -145,16 +151,25 @@ export const getBidsForLoad = async (req, res, next) => {
             });
         }
 
-        const bids = await Bid.find({ load: loadId })
+        const bids = await Bid.find({ load: loadId, status: { $in: ['Pending', 'Accepted', 'Rejected'] } })
             .populate('carrier', 'compName mc_dot_no city state phoneNo email fleetsize')
             .sort({ rate: 1, createdAt: 1 });
+
+        // Add driver and vehicle details to each bid in the response
+        const formattedBids = bids.map(bid => ({
+            ...bid.toObject(),
+            driverName: bid.driverName,
+            driverPhone: bid.driverPhone,
+            vehicleNumber: bid.vehicleNumber,
+            vehicleType: bid.vehicleType
+        }));
 
         console.log('🔍 Debug - Found bids count:', bids.length);
 
         res.status(200).json({
             success: true,
-            bids,
-            totalBids: bids.length,
+            bids: formattedBids,
+            totalBids: formattedBids.length,
         });
     } catch (error) {
         console.error('❌ Error in getBidsForLoad:', error);
@@ -166,7 +181,7 @@ export const getBidsForLoad = async (req, res, next) => {
 export const updateBidStatus = async (req, res, next) => {
     try {
         const { bidId } = req.params;
-        const { status, reason } = req.body; // 'Accepted' or 'Rejected'
+        const { status, reason, shipmentNumber, origin, destination } = req.body; // 'Accepted' or 'Rejected', plus new fields
 
         const bid = await Bid.findById(bidId).populate('load');
         if (!bid) {
@@ -182,10 +197,17 @@ export const updateBidStatus = async (req, res, next) => {
         }
 
         if (status === 'Accepted') {
-            // Update bid status
-            bid.status = 'Accepted';
-            bid.acceptedAt = Date.now();
+            // If shipper is trying to accept, set to PendingApproval instead
+            bid.status = 'PendingApproval';
+            bid.acceptedAt = null;
+            bid.opsApproved = false;
+            bid.opsApprovedAt = null;
             bid.rejectionReason = reason;
+            // Save DO document if uploaded
+            if (req.file) {
+                const { normalizeShipperTruckerPath } = await import('../middlewares/upload.js');
+                bid.doDocument = normalizeShipperTruckerPath(req.file.path);
+            }
             await bid.save();
 
             // Assign load to this carrier
@@ -193,7 +215,44 @@ export const updateBidStatus = async (req, res, next) => {
             load.status = 'Assigned';
             load.assignedTo = bid.carrier;
             load.acceptedBid = bid._id;
+            // Update shipment number and addresses if provided
+            if (shipmentNumber) load.shipmentNumber = shipmentNumber;
+            if (origin) {
+                if (origin.addressLine1 !== undefined) load.origin.addressLine1 = origin.addressLine1;
+                if (origin.addressLine2 !== undefined) load.origin.addressLine2 = origin.addressLine2;
+            }
+            if (destination) {
+                if (destination.addressLine1 !== undefined) load.destination.addressLine1 = destination.addressLine1;
+                if (destination.addressLine2 !== undefined) load.destination.addressLine2 = destination.addressLine2;
+            }
             await load.save();
+
+            // --- Tracking Logic Start ---
+            // Check if tracking already exists for this load
+            const existingTracking = await Tracking.findOne({ load: load._id });
+            if (!existingTracking) {
+                // Prepare full address strings
+                const originAddress = `${load.origin.addressLine1 || ''} ${load.origin.addressLine2 || ''} ${load.origin.city}, ${load.origin.state}`.trim();
+                const destinationAddress = `${load.destination.addressLine1 || ''} ${load.destination.addressLine2 || ''} ${load.destination.city}, ${load.destination.state}`.trim();
+                // Geocode origin
+                const originLatLng = await getLatLngFromAddress(originAddress);
+                // Geocode destination
+                const destinationLatLng = await getLatLngFromAddress(destinationAddress);
+                if (originLatLng && destinationLatLng) {
+                    await Tracking.create({
+                        load: load._id,
+                        originLatLng,
+                        destinationLatLng,
+                        status: 'in_transit',
+                        startedAt: new Date(),
+                        shipmentNumber: load.shipmentNumber || '',
+                        vehicleNumber: bid.vehicleNumber || '',
+                    });
+                } else {
+                    console.error('Geocoding failed for load', load._id);
+                }
+            }
+            // --- Tracking Logic End ---
 
             // Reject all other bids for same load
             await Bid.updateMany(
@@ -204,16 +263,63 @@ export const updateBidStatus = async (req, res, next) => {
                     rejectedAt: Date.now()
                 }
             );
-        } else {
+
+            // Send email notification to the trucker whose bid was accepted
+            try {
+                const trucker = await ShipperDriver.findById(bid.carrier);
+                if (trucker && trucker.email) {
+                    const subject = '🎉 Your Bid Has Been Accepted!';
+                    const html = `
+                        <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                          <h2 style="color: #2a7ae2; text-align: center;">🎉 Your Bid Has Been Accepted!</h2>
+                          <p style="font-size: 16px; color: #333;">Congratulations! Your bid for the following load has been <b style='color: #27ae60;'>accepted</b> by the shipper.</p>
+                          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                            <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Shipment Details</th></tr>
+                            <tr><td style="padding: 8px; font-weight: bold;">Shipment Number:</td><td style="padding: 8px;">${load.shipmentNumber || load._id}</td></tr>
+                            <tr><td style="padding: 8px; font-weight: bold;">PO Number:</td><td style="padding: 8px;">${load.poNumber || ''}</td></tr>
+                            <tr><td style="padding: 8px; font-weight: bold;">BOL Number:</td><td style="padding: 8px;">${load.bolNumber || ''}</td></tr>
+                            <tr><td style="padding: 8px; font-weight: bold;">From:</td><td style="padding: 8px;">${load.origin.addressLine1 || ''} ${load.origin.addressLine2 || ''}, ${load.origin.city}, ${load.origin.state}</td></tr>
+                            <tr><td style="padding: 8px; font-weight: bold;">To:</td><td style="padding: 8px;">${load.destination.addressLine1 || ''} ${load.destination.addressLine2 || ''}, ${load.destination.city}, ${load.destination.state}</td></tr>
+                          </table>
+                        </div>
+                    `;
+                    await sendEmail({
+                        to: trucker.email,
+                        subject,
+                        html
+                    });
+                }
+            } catch (err) {
+                console.error('Error sending trucker notification:', err);
+            }
+        } else if (status === 'Rejected') {
             bid.status = 'Rejected';
-            bid.rejectionReason = reason;
             bid.rejectedAt = Date.now();
+            bid.rejectionReason = reason;
             await bid.save();
+        }
+
+        // Always include these details in the response if bid is accepted
+        let extraDetails = {};
+        if (status === 'Accepted') {
+            const load = await Load.findById(bid.load._id);
+            if (bid.opsApproved) {
+                extraDetails = {
+                    shipmentNumber: load.shipmentNumber || '',
+                    poNumber: load.poNumber || '',
+                    bolNumber: load.bolNumber || '',
+                    doDocument: bid.doDocument || '',
+                };
+            } else {
+                extraDetails = { message: 'Pending internal approval.' };
+            }
         }
 
         res.status(200).json({
             success: true,
-            message: `Bid ${status.toLowerCase()} successfully`,
+            message: `Bid status updated to ${status}`,
+            bid,
+            ...extraDetails,
         });
     } catch (error) {
         next(error);
@@ -350,6 +456,259 @@ export const testUserLoads = async (req, res, next) => {
         });
     } catch (error) {
         console.error('❌ Error in testUserLoads:', error);
+        next(error);
+    }
+};
+
+// ✅ Intermediate user approves/updates bid rate
+export const approveBidIntermediate = async (req, res, next) => {
+    try {
+        const { bidId } = req.params;
+        const { intermediateRate } = req.body;
+
+        const bid = await Bid.findById(bidId);
+        if (!bid) {
+            return res.status(404).json({ success: false, message: 'Bid not found' });
+        }
+
+        if (bid.status !== 'PendingApproval') {
+            return res.status(400).json({ success: false, message: 'Bid is not pending approval' });
+        }
+
+        // Update the intermediate rate and status
+        bid.intermediateRate = intermediateRate;
+        bid.status = 'Pending';
+        await bid.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Bid approved and rate updated. Now visible to shipper.',
+            bid,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Intermediate user auto-approves bid with 5% markup
+export const approveBidIntermediateAuto = async (req, res, next) => {
+    try {
+        const { bidId } = req.params;
+        const bid = await Bid.findById(bidId);
+        if (!bid) {
+            return res.status(404).json({ success: false, message: 'Bid not found' });
+        }
+        if (bid.status !== 'PendingApproval') {
+            return res.status(400).json({ success: false, message: 'Bid is not pending approval' });
+        }
+        // Calculate 5% markup
+        const markupRate = Math.round(bid.rate * 1.05);
+        bid.intermediateRate = markupRate;
+        bid.status = 'Pending';
+        await bid.save();
+        res.status(200).json({
+            success: true,
+            message: 'Bid auto-approved with 5% markup. Now visible to shipper.',
+            bid,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get all accepted bids for the logged-in trucker
+export const getAcceptedBidsForTrucker = async (req, res, next) => {
+    try {
+        const bids = await Bid.find({ carrier: req.user._id, status: 'Accepted' })
+            .populate('load', 'origin destination weight commodity vehicleType status pickupDate deliveryDate')
+            .populate('load.shipper', 'compName mc_dot_no')
+            .sort({ createdAt: -1 });
+
+        // Format the response to include shipment number and address details
+        const formattedBids = bids.map(bid => ({
+            bidId: bid._id,
+            shipmentNumber: bid.load?.shipmentNumber,
+            origin: {
+                addressLine1: bid.load?.origin?.addressLine1,
+                addressLine2: bid.load?.origin?.addressLine2,
+                city: bid.load?.origin?.city,
+                state: bid.load?.origin?.state,
+                zip: bid.load?.origin?.zip
+            },
+            destination: {
+                addressLine1: bid.load?.destination?.addressLine1,
+                addressLine2: bid.load?.destination?.addressLine2,
+                city: bid.load?.destination?.city,
+                state: bid.load?.destination?.state,
+                zip: bid.load?.destination?.zip
+            },
+            commodity: bid.load?.commodity,
+            vehicleType: bid.load?.vehicleType,
+            weight: bid.load?.weight,
+            pickupDate: bid.load?.pickupDate,
+            deliveryDate: bid.load?.deliveryDate,
+            status: bid.status,
+            shipper: bid.load?.shipper,
+        }));
+
+        res.status(200).json({
+            success: true,
+            acceptedBids: formattedBids,
+            total: formattedBids.length
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Trucker assigns driver and vehicle details to an accepted bid
+export const assignDriverAndVehicle = async (req, res, next) => {
+    try {
+        const { bidId } = req.params;
+        const { driverName, driverPhone, vehicleNumber, vehicleType } = req.body;
+
+        // Find the bid and check ownership and status
+        const bid = await Bid.findById(bidId).populate({
+            path: 'load',
+            populate: { path: 'shipper', select: 'email compName' }
+        });
+        if (!bid) {
+            return res.status(404).json({ success: false, message: 'Bid not found' });
+        }
+        if (bid.carrier.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this bid' });
+        }
+        if (bid.status !== 'Accepted') {
+            return res.status(400).json({ success: false, message: 'Can only assign driver/vehicle to accepted bids' });
+        }
+
+        // Save details
+        bid.driverName = driverName;
+        bid.driverPhone = driverPhone;
+        bid.vehicleNumber = vehicleNumber;
+        bid.vehicleType = vehicleType;
+        await bid.save();
+
+        // Email shipper
+        try {
+            const shipper = bid.load.shipper;
+            if (shipper && shipper.email) {
+                const subject = '🚚 Driver & Vehicle Assigned';
+                const html = `
+                    <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                      <h2 style="color: #2a7ae2; text-align: center;">🚚 Driver & Vehicle Assigned</h2>
+                      <p style="font-size: 16px; color: #333;">The following driver and vehicle have been assigned for your shipment:</p>
+                      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                        <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Driver & Vehicle Details</th></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Driver Name:</td><td style="padding: 8px;">${driverName}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Driver Phone:</td><td style="padding: 8px;">${driverPhone}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Vehicle Number:</td><td style="padding: 8px;">${vehicleNumber}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Vehicle Type:</td><td style="padding: 8px;">${vehicleType}</td></tr>
+                        <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Shipment Info</th></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Bid ID:</td><td style="padding: 8px;">${bid._id}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Shipment Number:</td><td style="padding: 8px;">${bid.load.shipmentNumber || bid.load._id}</td></tr>
+                      </table>
+                      <p style="font-size: 15px; color: #555;">Please login to your <a href='' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> for more details.</p>
+                    </div>
+                `;
+                await sendEmail({
+                    to: shipper.email,
+                    subject,
+                    html
+                });
+            }
+        } catch (emailErr) {
+            console.error('❌ Error sending driver/vehicle email to shipper:', emailErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Driver and vehicle details assigned and sent to shipper.'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Update tracking location (for real-time updates from app)
+export const updateTrackingLocation = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+        const { lat, lon } = req.body;
+        if (!lat || !lon) {
+            return res.status(400).json({ success: false, message: 'Latitude and longitude are required.' });
+        }
+        const tracking = await Tracking.findOne({ load: loadId });
+        if (!tracking) {
+            return res.status(404).json({ success: false, message: 'Tracking record not found for this load.' });
+        }
+        tracking.currentLocation = { lat, lon, updatedAt: new Date() };
+        await tracking.save();
+        res.status(200).json({ success: true, message: 'Location updated successfully.', tracking });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Update tracking status (for in_transit, delivered, etc.)
+export const updateTrackingStatus = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+        const { status } = req.body;
+        if (!status) {
+            return res.status(400).json({ success: false, message: 'Status is required.' });
+        }
+        const allowed = ['in_transit', 'delivered', 'pending'];
+        if (!allowed.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status.' });
+        }
+        const tracking = await Tracking.findOne({ load: loadId });
+        if (!tracking) {
+            return res.status(404).json({ success: false, message: 'Tracking record not found for this load.' });
+        }
+        tracking.status = status;
+        if (status === 'delivered') {
+            tracking.endedAt = new Date();
+        }
+        await tracking.save();
+        res.status(200).json({ success: true, message: 'Tracking status updated.', tracking });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get trip (tracking) details for a load
+export const getTrackingDetails = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+        const tracking = await Tracking.findOne({ load: loadId });
+        if (!tracking) {
+            return res.status(404).json({ success: false, message: 'Tracking record not found for this load.' });
+        }
+        res.status(200).json({ success: true, tracking });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Approve bid by employee (ops)
+export const approveBidByOps = async (req, res, next) => {
+    try {
+        const { bidId } = req.params;
+        const bid = await Bid.findById(bidId);
+        if (!bid) {
+            return res.status(404).json({ success: false, message: 'Bid not found' });
+        }
+        if (bid.opsApproved) {
+            return res.status(400).json({ success: false, message: 'Bid already approved by ops.' });
+        }
+        bid.opsApproved = true;
+        bid.opsApprovedAt = new Date();
+        bid.status = 'Accepted';
+        bid.acceptedAt = new Date();
+        await bid.save();
+        res.status(200).json({ success: true, message: 'Bid approved by ops.', bid });
+    } catch (error) {
         next(error);
     }
 };
