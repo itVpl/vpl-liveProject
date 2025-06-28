@@ -53,7 +53,7 @@ const loadSchema = new mongoose.Schema({
   },  
   status: {
     type: String,
-    enum: ['Posted', 'Bidding', 'Assigned', 'In Transit', 'Delivered', 'Cancelled'],
+    enum: ['Posted', 'Bidding', 'Assigned', 'In Transit', 'POD_uploaded', 'PendingVerification', 'Delivered', 'Cancelled'],
     default: 'Posted',
   },
   assignedTo: {
@@ -107,6 +107,9 @@ const loadSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  proofOfDelivery: [{ type: String }], // URLs of images uploaded by driver
+  // Delivery approval by shipper
+  deliveryApproval: { type: Boolean, default: false },
 });
 
 // Update the updatedAt field before saving

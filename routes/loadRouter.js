@@ -10,10 +10,14 @@ import {
     searchLoads,
     getLoadStats,
     testUserAuth,
-    testLoadModel
+    testLoadModel,
+    uploadProofOfDelivery,
+    approveDelivery,
+    createTrackingForLoad
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper } from '../middlewares/auth.js';
 import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid } from '../controllers/bidController.js';
+import { proofOfDeliveryUpload, shipperTruckerUpload } from '../middlewares/upload.js';
 
 const loadRouter = express.Router();
 
@@ -44,5 +48,13 @@ loadRouter.post('/:loadId/status', isAuthenticatedUser, updateTrackingStatusBid)
 
 // Trip (tracking) details route
 loadRouter.get('/:loadId/trip', isAuthenticatedUser, getTrackingDetailsBid);
+
+// Driver uploads proof images
+loadRouter.post('/:id/proof', isAuthenticatedUser, proofOfDeliveryUpload.array('proof', 5), uploadProofOfDelivery);
+// Shipper approves delivery
+loadRouter.post('/:id/approve-delivery', isAuthenticatedUser, approveDelivery);
+
+// TEMP: Create tracking record for a load (admin/dev use only)
+loadRouter.post('/:id/create-tracking', isAuthenticatedUser, createTrackingForLoad);
 
 export default loadRouter;

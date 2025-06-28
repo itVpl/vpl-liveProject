@@ -105,6 +105,30 @@ const normalizeShipperTruckerPath = (filePath) => {
   return relPath.split(path.sep).join('/');
 };
 
+// Proof of Delivery storage for loads
+const proofOfDeliveryBasePath = path.join(__dirname, '../uploads/proofOfDelivery');
+if (!fs.existsSync(proofOfDeliveryBasePath)) {
+  fs.mkdirSync(proofOfDeliveryBasePath, { recursive: true });
+}
+
+const proofOfDeliveryStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const loadId = req.params.id || 'unknown_' + Date.now();
+    const loadFolder = path.join(proofOfDeliveryBasePath, loadId);
+    if (!fs.existsSync(loadFolder)) {
+      fs.mkdirSync(loadFolder, { recursive: true });
+    }
+    cb(null, loadFolder);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const filename = `${file.fieldname}_${Date.now()}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const proofOfDeliveryUpload = multer({ storage: proofOfDeliveryStorage, fileFilter });
+
 export { normalizePath, normalizeShipperTruckerPath };
-export { shipperTruckerUpload };
+export { shipperTruckerUpload, proofOfDeliveryUpload };
 export default employeeUpload;

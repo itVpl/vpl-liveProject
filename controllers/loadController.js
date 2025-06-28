@@ -3,6 +3,11 @@ import Bid from '../models/bidModel.js';
 import mongoose from 'mongoose';
 import ShipperDriver from '../models/shipper_driverModel.js';
 import { sendEmail } from '../utils/sendEmail.js';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+import Tracking from '../models/Tracking.js';
+import { proofOfDeliveryUpload } from '../middlewares/upload.js';
 
 // ✅ Shipper creates a new load
 export const createLoad = async (req, res, next) => {
@@ -308,26 +313,29 @@ export const updateLoadStatus = async (req, res, next) => {
     try {
         const { status } = req.body;
         const load = await Load.findById(req.params.id);
-
         if (!load) {
             return res.status(404).json({
                 success: false,
                 message: 'Load not found',
             });
         }
-
-        // Check if user is authorized to update this load
-        if (load.shipper.toString() !== req.user._id.toString() && 
-            load.assignedTo?.toString() !== req.user._id.toString()) {
+        // Only assigned driver can update status
+        if (!req.user || !load.assignedTo || load.assignedTo.toString() !== req.user._id.toString() || req.user.userType !== 'trucker') {
             return res.status(403).json({
                 success: false,
-                message: 'Not authorized to update this load',
+                message: 'Only assigned driver can update status',
             });
         }
-
         load.status = status;
         await load.save();
-
+        // If delivered, update tracking status too
+        if (status === 'Delivered' || status === 'delivered') {
+            const Tracking = (await import('../models/Tracking.js')).default;
+            await Tracking.findOneAndUpdate(
+                { load: load._id },
+                { status: 'delivered', endedAt: new Date() }
+            );
+        }
         res.status(200).json({
             success: true,
             message: 'Load status updated successfully',
@@ -494,4 +502,113 @@ export const testUserAuth = async (req, res, next) => {
         console.error('❌ Error in testUserAuth:', error);
         next(error);
     }
+};
+
+// Driver uploads proof images
+export const uploadProofOfDelivery = async (req, res, next) => {
+  try {
+    const load = await Load.findById(req.params.id);
+    if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
+    if (load.assignedTo?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Only assigned driver can upload proof' });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
+    }
+    // Move files to shipment number folder if available
+    const fs = (await import('fs')).default;
+    const path = (await import('path')).default;
+    const __dirname = path.dirname(new URL(import.meta.url).pathname);
+    const proofOfDeliveryBasePath = path.join(__dirname, '../uploads/proofOfDelivery');
+    const shipmentFolder = path.join(proofOfDeliveryBasePath, load.shipmentNumber || load._id.toString());
+    if (!fs.existsSync(shipmentFolder)) {
+      fs.mkdirSync(shipmentFolder, { recursive: true });
+    }
+    // Move uploaded files to shipment folder
+    const fileUrls = [];
+    for (const file of req.files) {
+      const destPath = path.join(shipmentFolder, path.basename(file.path));
+      fs.renameSync(file.path, destPath);
+      fileUrls.push('/uploads/proofOfDelivery/' + (load.shipmentNumber || load._id.toString()) + '/' + path.basename(file.path));
+    }
+    load.proofOfDelivery = fileUrls;
+    load.status = 'POD_uploaded';
+    await load.save();
+    res.status(200).json({ success: true, message: 'Proof uploaded', proof: fileUrls, load });
+  } catch (error) { next(error); }
+};
+
+// Shipper approves delivery
+export const approveDelivery = async (req, res, next) => {
+  try {
+    const load = await Load.findById(req.params.id).populate('shipper assignedTo');
+    if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
+    if (load.shipper._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Only shipper can approve delivery' });
+    }
+    if (!load.proofOfDelivery || load.proofOfDelivery.length === 0) {
+      return res.status(400).json({ success: false, message: 'No proof uploaded by driver' });
+    }
+    if (load.status !== 'POD_uploaded') {
+      return res.status(400).json({ success: false, message: 'Delivery can only be approved after POD is uploaded.' });
+    }
+    load.status = 'Delivered';
+    load.deliveryApproval = true;
+    await load.save();
+
+    // Send notification/email to shipper and trucker
+    try {
+      const { sendEmail } = await import('../utils/sendEmail.js');
+      // Email to shipper
+      if (load.shipper.email) {
+        await sendEmail({
+          to: load.shipper.email,
+          subject: '✅ Delivery Verified & Completed',
+          html: `<p>Your load (Shipment No: ${load.shipmentNumber || load._id}) has been delivered and verified by inhouse team.</p>`
+        });
+      }
+      // Email to trucker
+      if (load.assignedTo && load.assignedTo.email) {
+        await sendEmail({
+          to: load.assignedTo.email,
+          subject: '✅ Delivery Verified & Completed',
+          html: `<p>Your assigned load (Shipment No: ${load.shipmentNumber || load._id}) has been delivered and verified by shipper.</p>`
+        });
+      }
+    } catch (err) {
+      console.error('❌ Error sending delivery notification emails:', err);
+    }
+
+    res.status(200).json({ success: true, message: 'Delivery approved', load });
+  } catch (error) { next(error); }
+};
+
+// TEMP: Create tracking record for a load (admin/dev use only)
+export const createTrackingForLoad = async (req, res, next) => {
+  try {
+    const load = await Load.findById(req.params.id);
+    if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
+    // Check if already exists
+    let tracking = await Tracking.findOne({ load: load._id });
+    if (tracking) return res.status(200).json({ success: true, message: 'Tracking already exists', tracking });
+    // Try to get lat/lon from load.origin/destination
+    const originLatLng = {
+      lat: load.origin?.lat || 0,
+      lon: load.origin?.lon || 0,
+    };
+    const destinationLatLng = {
+      lat: load.destination?.lat || 0,
+      lon: load.destination?.lon || 0,
+    };
+    tracking = new Tracking({
+      load: load._id,
+      originLatLng,
+      destinationLatLng,
+      status: 'in_transit',
+      vehicleNumber: load.vehicleNumber || '',
+      shipmentNumber: load.shipmentNumber || '',
+    });
+    await tracking.save();
+    res.status(201).json({ success: true, message: 'Tracking created', tracking });
+  } catch (error) { next(error); }
 };

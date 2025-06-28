@@ -40,6 +40,13 @@ const trackingSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  originName: { type: String, default: '' },
+  destinationName: { type: String, default: '' },
+  loadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Load', default: null },
+  shipperName: { type: String, default: '' },
+  truckerName: { type: String, default: '' },
+  bidId: { type: mongoose.Schema.Types.ObjectId, ref: 'Bid', default: null },
+  driverName: { type: String, default: '' },
 });
 
 export default mongoose.model('Tracking', trackingSchema); 

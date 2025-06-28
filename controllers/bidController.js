@@ -4,6 +4,7 @@ import ShipperDriver from '../models/shipper_driverModel.js';
 import { sendEmail } from '../utils/sendEmail.js';
 import Tracking from '../models/Tracking.js';
 import { getLatLngFromAddress } from '../utils/geocode.js';
+import Driver from '../models/driverModel.js';
 
 // ✅ Carrier places a bid
 export const placeBid = async (req, res, next) => {
@@ -118,14 +119,14 @@ export const updateBid = async (req, res, next) => {
 export const getBidsForLoad = async (req, res, next) => {
     try {
         const { loadId } = req.params;
-        
+
         console.log('🔍 Debug - Load ID:', loadId);
         console.log('🔍 Debug - User ID:', req.user?._id);
         console.log('🔍 Debug - User Type:', req.user?.userType);
-        
+
         const load = await Load.findById(loadId);
         console.log('🔍 Debug - Load found:', !!load);
-        
+
         if (!load) {
             return res.status(404).json({
                 success: false,
@@ -257,7 +258,7 @@ export const updateBidStatus = async (req, res, next) => {
             // Reject all other bids for same load
             await Bid.updateMany(
                 { load: bid.load._id, _id: { $ne: bid._id } },
-                { 
+                {
                     status: 'Rejected',
                     rejectionReason: 'Another bid was accepted',
                     rejectedAt: Date.now()
@@ -427,7 +428,7 @@ export const testUserLoads = async (req, res, next) => {
         console.log('🔍 Debug - User ID:', req.user?._id);
         console.log('🔍 Debug - User Type:', req.user?.userType);
         console.log('🔍 Debug - User Status:', req.user?.status);
-        
+
         if (!req.user) {
             return res.status(400).json({
                 success: false,
@@ -565,7 +566,7 @@ export const getAcceptedBidsForTrucker = async (req, res, next) => {
 export const assignDriverAndVehicle = async (req, res, next) => {
     try {
         const { bidId } = req.params;
-        const { driverName, driverPhone, vehicleNumber, vehicleType } = req.body;
+        const { driverId, vehicleNumber, vehicleType } = req.body;
 
         // Find the bid and check ownership and status
         const bid = await Bid.findById(bidId).populate({
@@ -582,12 +583,50 @@ export const assignDriverAndVehicle = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Can only assign driver/vehicle to accepted bids' });
         }
 
-        // Save details
-        bid.driverName = driverName;
-        bid.driverPhone = driverPhone;
+        // Check driver exists and belongs to this trucker
+        const driver = await Driver.findOne({ _id: driverId, truckerId: req.user._id });
+        if (!driver) {
+            return res.status(404).json({ success: false, message: 'Driver not found or not your driver' });
+        }
+
+        // Save details from driver
+        bid.driverName = driver.fullName;
+        bid.driverPhone = driver.phone;
         bid.vehicleNumber = vehicleNumber;
         bid.vehicleType = vehicleType;
         await bid.save();
+
+        // Update Tracking record with all required info
+        const Tracking = (await import('../models/Tracking.js')).default;
+        const ShipperDriver = (await import('../models/shipper_driverModel.js')).default;
+        const Load = (await import('../models/loadModel.js')).Load;
+        // Populate all required info
+        const load = await Load.findById(bid.load._id).populate('shipper', 'compName');
+        const trucker = await ShipperDriver.findById(bid.carrier);
+        let tracking = await Tracking.findOne({ load: load._id });
+        if (!tracking) {
+            // If not exists, create new
+            tracking = new Tracking({
+                load: load._id,
+                originLatLng: { lat: load.origin.lat || 0, lon: load.origin.lon || 0 },
+                destinationLatLng: { lat: load.destination.lat || 0, lon: load.destination.lon || 0 },
+                status: 'in_transit',
+                vehicleNumber: vehicleNumber,
+                shipmentNumber: load.shipmentNumber || load._id,
+            });
+        }
+        // Add/Update extra info as per requirement
+        tracking.status = 'in_transit';
+        tracking.vehicleNumber = vehicleNumber;
+        tracking.shipmentNumber = load.shipmentNumber || load._id;
+        tracking.originName = load.origin.city + ', ' + load.origin.state;
+        tracking.destinationName = load.destination.city + ', ' + load.destination.state;
+        tracking.loadId = load._id;
+        tracking.shipperName = load.shipper.compName;
+        tracking.truckerName = trucker.compName;
+        tracking.bidId = bid._id;
+        tracking.driverName = driver.fullName;
+        await tracking.save();
 
         // Email shipper
         try {
@@ -600,13 +639,13 @@ export const assignDriverAndVehicle = async (req, res, next) => {
                       <p style="font-size: 16px; color: #333;">The following driver and vehicle have been assigned for your shipment:</p>
                       <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
                         <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Driver & Vehicle Details</th></tr>
-                        <tr><td style="padding: 8px; font-weight: bold;">Driver Name:</td><td style="padding: 8px;">${driverName}</td></tr>
-                        <tr><td style="padding: 8px; font-weight: bold;">Driver Phone:</td><td style="padding: 8px;">${driverPhone}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Driver Name:</td><td style="padding: 8px;">${driver.fullName}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Driver Phone:</td><td style="padding: 8px;">${driver.phone}</td></tr>
                         <tr><td style="padding: 8px; font-weight: bold;">Vehicle Number:</td><td style="padding: 8px;">${vehicleNumber}</td></tr>
                         <tr><td style="padding: 8px; font-weight: bold;">Vehicle Type:</td><td style="padding: 8px;">${vehicleType}</td></tr>
                         <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Shipment Info</th></tr>
                         <tr><td style="padding: 8px; font-weight: bold;">Bid ID:</td><td style="padding: 8px;">${bid._id}</td></tr>
-                        <tr><td style="padding: 8px; font-weight: bold;">Shipment Number:</td><td style="padding: 8px;">${bid.load.shipmentNumber || bid.load._id}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Shipment Number:</td><td style="padding: 8px;">${load.shipmentNumber || load._id}</td></tr>
                       </table>
                       <p style="font-size: 15px; color: #555;">Please login to your <a href='' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> for more details.</p>
                     </div>
@@ -621,9 +660,43 @@ export const assignDriverAndVehicle = async (req, res, next) => {
             console.error('❌ Error sending driver/vehicle email to shipper:', emailErr);
         }
 
+        // Email driver with shipment details
+        try {
+            if (driver && driver.email) {
+                const subject = '🚚 Shipment Assignment Details';
+                const html = `
+                    <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                      <h2 style="color: #2a7ae2; text-align: center;">🚚 Shipment Assignment</h2>
+                      <p style="font-size: 16px; color: #333;">You have been assigned to a new shipment. Please find the details below:</p>
+                      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                        <tr style="background: #eaf1fb;"><th colspan="2" style="padding: 8px; text-align: left; font-size: 16px;">Shipment Info</th></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Shipment Number:</td><td style="padding: 8px;">${load.shipmentNumber || load._id}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">From:</td><td style="padding: 8px;">${load.origin.city}, ${load.origin.state}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">To:</td><td style="padding: 8px;">${load.destination.city}, ${load.destination.state}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Pickup Date:</td><td style="padding: 8px;">${load.pickupDate ? new Date(load.pickupDate).toLocaleDateString() : ''}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Delivery Date:</td><td style="padding: 8px;">${load.deliveryDate ? new Date(load.deliveryDate).toLocaleDateString() : ''}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Shipper Name:</td><td style="padding: 8px;">${load.shipper.compName}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Trucker Name:</td><td style="padding: 8px;">${trucker.compName}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Bid ID:</td><td style="padding: 8px;">${bid._id}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Driver Name:</td><td style="padding: 8px;">${driver.fullName}</td></tr>
+                        <tr><td style="padding: 8px; font-weight: bold;">Trip Status:</td><td style="padding: 8px;">in_transit</td></tr>
+                      </table>
+                      <p style="font-size: 15px; color: #555;">Please contact your dispatcher for more details or login to the VPL app.</p>
+                    </div>
+                `;
+                await sendEmail({
+                    to: driver.email,
+                    subject,
+                    html
+                });
+            }
+        } catch (emailErr) {
+            console.error('❌ Error sending shipment details email to driver:', emailErr);
+        }
+
         res.status(200).json({
             success: true,
-            message: 'Driver and vehicle details assigned and sent to shipper.'
+            message: 'Driver and vehicle details assigned, sent to shipper and driver, and trip updated.'
         });
     } catch (error) {
         next(error);
@@ -677,6 +750,27 @@ export const updateTrackingStatus = async (req, res, next) => {
     }
 };
 
+async function createTrackingForLoad(load) {
+    // Check if already exists
+    const exists = await Tracking.findOne({ load: load._id });
+    if (exists) return exists;
+
+    // Get lat/lon from load.origin/destination (assume they exist)
+    const originLatLng = { lat: load.origin.lat, lon: load.origin.lon };
+    const destinationLatLng = { lat: load.destination.lat, lon: load.destination.lon };
+
+    const tracking = new Tracking({
+        load: load._id,
+        originLatLng,
+        destinationLatLng,
+        status: 'in_transit',
+        vehicleNumber: load.vehicleNumber || '',
+        shipmentNumber: load.shipmentNumber || '',
+    });
+    await tracking.save();
+    return tracking;
+}
+
 // Get trip (tracking) details for a load
 export const getTrackingDetails = async (req, res, next) => {
     try {
@@ -695,7 +789,7 @@ export const getTrackingDetails = async (req, res, next) => {
 export const approveBidByOps = async (req, res, next) => {
     try {
         const { bidId } = req.params;
-        const bid = await Bid.findById(bidId);
+        const bid = await Bid.findById(bidId).populate('load');
         if (!bid) {
             return res.status(404).json({ success: false, message: 'Bid not found' });
         }
@@ -707,6 +801,27 @@ export const approveBidByOps = async (req, res, next) => {
         bid.status = 'Accepted';
         bid.acceptedAt = new Date();
         await bid.save();
+        // Auto-create tracking record for the load if not exists
+        const load = bid.load;
+        if (load) {
+            let tracking = await Tracking.findOne({ load: load._id });
+            if (!tracking) {
+                // Geocode origin and destination
+                const originAddress = `${load.origin?.city || ''}, ${load.origin?.state || ''}`;
+                const destinationAddress = `${load.destination?.city || ''}, ${load.destination?.state || ''}`;
+                const originLatLng = await getLatLngFromAddress(originAddress) || { lat: 0, lon: 0 };
+                const destinationLatLng = await getLatLngFromAddress(destinationAddress) || { lat: 0, lon: 0 };
+                tracking = new Tracking({
+                    load: load._id,
+                    originLatLng,
+                    destinationLatLng,
+                    status: 'in_transit',
+                    vehicleNumber: load.vehicleNumber || '',
+                    shipmentNumber: load.shipmentNumber || '',
+                });
+                await tracking.save();
+            }
+        }
         res.status(200).json({ success: true, message: 'Bid approved by ops.', bid });
     } catch (error) {
         next(error);

@@ -28,7 +28,8 @@ import hygieneRouter from './routes/hygieneRoutes.js';
 import payrollRouter from './routes/payrollRoutes.js';
 import analytics8x8Routes from './routes/analytics8x8Routes.js';
 import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
-
+import emailInboxRoutes from './routes/emailInboxRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
 
 export const app = express();
 
@@ -87,11 +88,16 @@ app.use(cors({
 // }));
 
 app.use(cookieParser());
+
+// Move express.json and express.urlencoded to the very top before any routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Move loadRouter before express.json and express.urlencoded for file upload compatibility
+app.use('/api/v1/load', loadRouter);
+
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
-app.use('/api/v1/load', loadRouter);
 app.use('/api/v1/bid', bidRouter);
 app.use('/api/v1/loadboard', loadBoardRouter);
 app.use('/api/v1/driver', driverRouter);
@@ -109,7 +115,8 @@ app.use('/api/v1/hygiene/self', hygieneRouter);
 app.use('/api/v1/payroll', payrollRouter);
 app.use('/api/v1/analytics/8x8', analytics8x8Routes); 
 app.use('/api/v1/dailytask', dailyTaskRoutes);
-
+app.use('/api/v1/email-inbox', emailInboxRoutes);
+app.use('/api/v1/chat', chatRoutes);
 setInterval(checkOverdueBreaks, 60000);
 
 
