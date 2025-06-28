@@ -612,3 +612,58 @@ export const createTrackingForLoad = async (req, res, next) => {
     res.status(201).json({ success: true, message: 'Tracking created', tracking });
   } catch (error) { next(error); }
 };
+
+// Get all shipments from Tracking table
+export const getAllTrackings = async (req, res, next) => {
+  try {
+    const Tracking = (await import('../models/Tracking.js')).default;
+    const trackings = await Tracking.find()
+      .populate({
+        path: 'load',
+        populate: [
+          { path: 'shipper', select: 'compName email' },
+          { path: 'assignedTo', select: 'compName email' }
+        ]
+      });
+    res.status(200).json({ success: true, trackings });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getTrackingByShipmentNumber = async (req, res, next) => {
+    try {
+      const { shipmentNumber } = req.params;
+  
+      if (!shipmentNumber) {
+        return res.status(400).json({
+          success: false,
+          message: 'Shipment number is required',
+        });
+      }
+  
+      const tracking = await Tracking.findOne({ shipmentNumber })
+        .populate({
+          path: 'load',
+          populate: [
+            { path: 'shipper', select: 'compName email' },
+            { path: 'assignedTo', select: 'compName email' }
+          ]
+        });
+  
+      if (!tracking) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tracking not found for given shipment number',
+        });
+      }
+  
+      res.status(200).json({
+        success: true,
+        tracking,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };

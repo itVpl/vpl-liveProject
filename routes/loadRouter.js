@@ -13,7 +13,9 @@ import {
     testLoadModel,
     uploadProofOfDelivery,
     approveDelivery,
-    createTrackingForLoad
+    createTrackingForLoad,
+    getAllTrackings,
+    getTrackingByShipmentNumber
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper } from '../middlewares/auth.js';
 import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid } from '../controllers/bidController.js';
@@ -35,8 +37,13 @@ loadRouter.post('/create', isShipper, createLoad); // Only shippers can create l
 loadRouter.get('/shipper', isShipper, getShipperLoads); // Only shippers can view their loads
 loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads); // Truckers can view assigned loads
 
+// Get all shipments from Tracking table
+loadRouter.get('/all-trackings', getAllTrackings);
+loadRouter.get('/shipment/:shipmentNumber', getTrackingByShipmentNumber);
+
 // Parameterized routes last
 loadRouter.get('/:id', getLoadDetails); // Public route for load details
+
 loadRouter.put('/:id/status', isAuthenticatedUser, updateLoadStatus); // Both can update status
 loadRouter.delete('/:id', isShipper, cancelLoad); // Only shippers can cancel loads
 
@@ -56,5 +63,7 @@ loadRouter.post('/:id/approve-delivery', isAuthenticatedUser, approveDelivery);
 
 // TEMP: Create tracking record for a load (admin/dev use only)
 loadRouter.post('/:id/create-tracking', isAuthenticatedUser, createTrackingForLoad);
+
+
 
 export default loadRouter;
