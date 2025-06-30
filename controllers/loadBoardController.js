@@ -1,6 +1,8 @@
 import { Load } from '../models/loadModel.js';
 import Bid from '../models/bidModel.js';
 import ShipperDriver from '../models/shipper_driverModel.js';
+import Tracking from '../models/Tracking.js';
+import ExcelJS from 'exceljs';
 
 // ✅ Get load board dashboard data
 export const getLoadBoardDashboard = async (req, res, next) => {
@@ -277,4 +279,177 @@ export const getLoadBoardNotifications = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+// ✅ Completed Loads Report (all or user-wise)
+export const getCompletedLoadsReport = async (req, res, next) => {
+    try {
+        const { userId, userType } = req.query; // userType: 'shipper' or 'trucker'
+        const filter = { status: 'Delivered' };
+        if (userId && userType === 'shipper') {
+            filter.shipper = userId;
+        } else if (userId && userType === 'trucker') {
+            filter.assignedTo = userId;
+        }
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName email')
+            .populate('assignedTo', 'compName email')
+            .sort({ deliveryDate: -1 });
+        res.status(200).json({ success: true, total: loads.length, loads });
+    } catch (error) { next(error); }
+};
+
+// ✅ Delivery Delays Report
+export const getDeliveryDelaysReport = async (req, res, next) => {
+    try {
+        const { userId, userType } = req.query; // userType: 'shipper' or 'trucker'
+        // Find all delivered loads
+        const loadFilter = { status: 'Delivered' };
+        if (userId && userType === 'shipper') {
+            loadFilter.shipper = userId;
+        } else if (userId && userType === 'trucker') {
+            loadFilter.assignedTo = userId;
+        }
+        const deliveredLoads = await Load.find(loadFilter);
+        // Find delays by comparing Tracking.endedAt with Load.deliveryDate
+        const delayedDeliveries = [];
+        for (const load of deliveredLoads) {
+            const tracking = await Tracking.findOne({ load: load._id });
+            if (tracking && tracking.endedAt && load.deliveryDate && tracking.endedAt > load.deliveryDate) {
+                delayedDeliveries.push({
+                    load,
+                    scheduledDelivery: load.deliveryDate,
+                    actualDelivery: tracking.endedAt,
+                    delayHours: ((tracking.endedAt - load.deliveryDate) / (1000 * 60 * 60)).toFixed(2)
+                });
+            }
+        }
+        res.status(200).json({ success: true, total: delayedDeliveries.length, delayedDeliveries });
+    } catch (error) { next(error); }
+};
+
+// ✅ Completed Loads Report (Excel Export)
+export const exportCompletedLoadsExcel = async (req, res, next) => {
+    try {
+        const { userId, userType } = req.query;
+        const filter = { status: 'Delivered' };
+        if (userId && userType === 'shipper') {
+            filter.shipper = userId;
+        } else if (userId && userType === 'trucker') {
+            filter.assignedTo = userId;
+        }
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName email phoneNo city state')
+            .populate('assignedTo', 'compName email phoneNo city state')
+            .populate('acceptedBid')
+            .sort({ deliveryDate: -1 });
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Completed Loads');
+        worksheet.columns = [
+            { header: 'Shipment Number', key: 'shipmentNumber', width: 20 },
+            { header: 'Shipper', key: 'shipper', width: 20 },
+            { header: 'Shipper Email', key: 'shipperEmail', width: 24 },
+            { header: 'Shipper Phone', key: 'shipperPhone', width: 18 },
+            { header: 'Trucker', key: 'trucker', width: 20 },
+            { header: 'Trucker Email', key: 'truckerEmail', width: 24 },
+            { header: 'Trucker Phone', key: 'truckerPhone', width: 18 },
+            { header: 'Driver Name', key: 'driverName', width: 20 },
+            { header: 'Driver Phone', key: 'driverPhone', width: 18 },
+            { header: 'Vehicle Number', key: 'vehicleNumber', width: 18 },
+            { header: 'Origin', key: 'origin', width: 24 },
+            { header: 'Destination', key: 'destination', width: 24 },
+            { header: 'Pickup Date', key: 'pickupDate', width: 18 },
+            { header: 'Delivery Date', key: 'deliveryDate', width: 18 },
+            { header: 'Weight', key: 'weight', width: 10 },
+            { header: 'Commodity', key: 'commodity', width: 16 },
+            { header: 'Vehicle Type', key: 'vehicleType', width: 16 },
+            { header: 'Rate', key: 'rate', width: 10 },
+            { header: 'Rate Type', key: 'rateType', width: 14 },
+            { header: 'Status', key: 'status', width: 14 },
+        ];
+        loads.forEach(load => {
+            worksheet.addRow({
+                shipmentNumber: load.shipmentNumber || '',
+                shipper: load.shipper?.compName || '',
+                shipperEmail: load.shipper?.email || '',
+                shipperPhone: load.shipper?.phoneNo || '',
+                trucker: load.assignedTo?.compName || '',
+                truckerEmail: load.assignedTo?.email || '',
+                truckerPhone: load.assignedTo?.phoneNo || '',
+                driverName: load.acceptedBid?.driverName || '',
+                driverPhone: load.acceptedBid?.driverPhone || '',
+                vehicleNumber: load.acceptedBid?.vehicleNumber || '',
+                origin: `${load.origin?.city || ''}, ${load.origin?.state || ''}`,
+                destination: `${load.destination?.city || ''}, ${load.destination?.state || ''}`,
+                pickupDate: load.pickupDate ? new Date(load.pickupDate).toLocaleString() : '',
+                deliveryDate: load.deliveryDate ? new Date(load.deliveryDate).toLocaleString() : '',
+                weight: load.weight,
+                commodity: load.commodity,
+                vehicleType: load.vehicleType,
+                rate: load.rate,
+                rateType: load.rateType,
+                status: load.status,
+            });
+        });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="completed_loads.xlsx"');
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) { next(error); }
+};
+
+// ✅ Delivery Delays Report (Excel Export)
+export const exportDeliveryDelaysExcel = async (req, res, next) => {
+    try {
+        const { userId, userType } = req.query;
+        const loadFilter = { status: 'Delivered' };
+        if (userId && userType === 'shipper') {
+            loadFilter.shipper = userId;
+        } else if (userId && userType === 'trucker') {
+            loadFilter.assignedTo = userId;
+        }
+        const deliveredLoads = await Load.find(loadFilter)
+            .populate('shipper', 'compName email')
+            .populate('assignedTo', 'compName email');
+        const delayedDeliveries = [];
+        for (const load of deliveredLoads) {
+            const tracking = await Tracking.findOne({ load: load._id });
+            if (tracking && tracking.endedAt && load.deliveryDate && tracking.endedAt > load.deliveryDate) {
+                delayedDeliveries.push({
+                    load,
+                    scheduledDelivery: load.deliveryDate,
+                    actualDelivery: tracking.endedAt,
+                    delayHours: ((tracking.endedAt - load.deliveryDate) / (1000 * 60 * 60)).toFixed(2)
+                });
+            }
+        }
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Delivery Delays');
+        worksheet.columns = [
+            { header: 'Shipment Number', key: 'shipmentNumber', width: 20 },
+            { header: 'Shipper', key: 'shipper', width: 20 },
+            { header: 'Trucker', key: 'trucker', width: 20 },
+            { header: 'Origin', key: 'origin', width: 20 },
+            { header: 'Destination', key: 'destination', width: 20 },
+            { header: 'Scheduled Delivery', key: 'scheduled', width: 22 },
+            { header: 'Actual Delivery', key: 'actual', width: 22 },
+            { header: 'Delay (hours)', key: 'delay', width: 16 },
+        ];
+        delayedDeliveries.forEach(item => {
+            worksheet.addRow({
+                shipmentNumber: item.load.shipmentNumber || '',
+                shipper: item.load.shipper?.compName || '',
+                trucker: item.load.assignedTo?.compName || '',
+                origin: `${item.load.origin?.city || ''}, ${item.load.origin?.state || ''}`,
+                destination: `${item.load.destination?.city || ''}, ${item.load.destination?.state || ''}`,
+                scheduled: item.scheduledDelivery ? new Date(item.scheduledDelivery).toLocaleString() : '',
+                actual: item.actualDelivery ? new Date(item.actualDelivery).toLocaleString() : '',
+                delay: item.delayHours,
+            });
+        });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="delivery_delays.xlsx"');
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) { next(error); }
 }; 
