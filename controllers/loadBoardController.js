@@ -3,6 +3,8 @@ import Bid from '../models/bidModel.js';
 import ShipperDriver from '../models/shipper_driverModel.js';
 import Tracking from '../models/Tracking.js';
 import ExcelJS from 'exceljs';
+import PDFDocument from 'pdfkit';
+import PDFTable from 'pdfkit-table';
 
 // ✅ Get load board dashboard data
 export const getLoadBoardDashboard = async (req, res, next) => {
@@ -451,5 +453,127 @@ export const exportDeliveryDelaysExcel = async (req, res, next) => {
         res.setHeader('Content-Disposition', 'attachment; filename="delivery_delays.xlsx"');
         await workbook.xlsx.write(res);
         res.end();
+    } catch (error) { next(error); }
+};
+
+export const exportCompletedLoadsPDF = async (req, res, next) => {
+    try {
+        const { userId, userType } = req.query;
+        const filter = { status: 'Delivered' };
+        if (userId && userType === 'shipper') {
+            filter.shipper = userId;
+        } else if (userId && userType === 'trucker') {
+            filter.assignedTo = userId;
+        }
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName email phoneNo city state')
+            .populate('assignedTo', 'compName email phoneNo city state')
+            .populate('acceptedBid')
+            .sort({ deliveryDate: -1 });
+        const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="completed_loads.pdf"');
+        doc.fontSize(20).text('Completed Loads Report', { align: 'center', underline: true });
+        doc.moveDown(1.5);
+        // Prepare table data
+        const table = {
+            headers: [
+                'Shipment No', 'Shipper', 'Trucker', 'Driver', 'Origin', 'Destination',
+                'Pickup Date', 'Delivery Date', 'Weight', 'Commodity', 'Vehicle Type',
+                'Rate', 'Rate Type', 'Status'
+            ],
+            rows: loads.map(load => [
+                load.shipmentNumber || '',
+                load.shipper?.compName || '',
+                load.assignedTo?.compName || '',
+                load.acceptedBid?.driverName || '',
+                `${load.origin?.city || ''}, ${load.origin?.state || ''}`,
+                `${load.destination?.city || ''}, ${load.destination?.state || ''}`,
+                load.pickupDate ? new Date(load.pickupDate).toLocaleDateString() : '',
+                load.deliveryDate ? new Date(load.deliveryDate).toLocaleDateString() : '',
+                load.weight,
+                load.commodity,
+                load.vehicleType,
+                load.rate,
+                load.rateType,
+                load.status
+            ])
+        };
+        await doc.table(table, {
+            prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10),
+            prepareRow: (row, i) => doc.font('Helvetica').fontSize(9).fillColor(i % 2 ? '#444' : '#000'),
+            padding: 4,
+            columnSpacing: 4,
+            width: doc.page.width - 40
+        });
+        doc.end();
+        doc.pipe(res);
+    } catch (error) { next(error); }
+};
+
+export const exportDeliveryDelaysPDF = async (req, res, next) => {
+    try {
+        const { userId, userType } = req.query;
+        const loadFilter = { status: 'Delivered' };
+        if (userId && userType === 'shipper') {
+            loadFilter.shipper = userId;
+        } else if (userId && userType === 'trucker') {
+            loadFilter.assignedTo = userId;
+        }
+        const deliveredLoads = await Load.find(loadFilter)
+            .populate('shipper', 'compName email phoneNo city state')
+            .populate('assignedTo', 'compName email phoneNo city state')
+            .populate('acceptedBid');
+        const delayedDeliveries = [];
+        for (const load of deliveredLoads) {
+            const tracking = await Tracking.findOne({ load: load._id });
+            if (tracking && tracking.endedAt && load.deliveryDate && tracking.endedAt > load.deliveryDate) {
+                delayedDeliveries.push({
+                    load,
+                    scheduledDelivery: load.deliveryDate,
+                    actualDelivery: tracking.endedAt,
+                    delayHours: ((tracking.endedAt - load.deliveryDate) / (1000 * 60 * 60)).toFixed(2)
+                });
+            }
+        }
+        const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="delivery_delays.pdf"');
+        doc.fontSize(20).text('Delivery Delays Report', { align: 'center', underline: true });
+        doc.moveDown(1.5);
+        // Prepare table data
+        const table = {
+            headers: [
+                'Shipment No', 'Shipper', 'Trucker', 'Driver', 'Origin', 'Destination',
+                'Scheduled Delivery', 'Actual Delivery', 'Delay (hours)',
+                'Weight', 'Commodity', 'Vehicle Type', 'Rate', 'Rate Type', 'Status'
+            ],
+            rows: delayedDeliveries.map(item => [
+                item.load.shipmentNumber || '',
+                item.load.shipper?.compName || '',
+                item.load.assignedTo?.compName || '',
+                item.load.acceptedBid?.driverName || '',
+                `${item.load.origin?.city || ''}, ${item.load.origin?.state || ''}`,
+                `${item.load.destination?.city || ''}, ${item.load.destination?.state || ''}`,
+                item.scheduledDelivery ? new Date(item.scheduledDelivery).toLocaleDateString() : '',
+                item.actualDelivery ? new Date(item.actualDelivery).toLocaleDateString() : '',
+                item.delayHours,
+                item.load.weight,
+                item.load.commodity,
+                item.load.vehicleType,
+                item.load.rate,
+                item.load.rateType,
+                item.load.status
+            ])
+        };
+        await doc.table(table, {
+            prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10),
+            prepareRow: (row, i) => doc.font('Helvetica').fontSize(9).fillColor(i % 2 ? '#444' : '#000'),
+            padding: 4,
+            columnSpacing: 4,
+            width: doc.page.width - 40
+        });
+        doc.end();
+        doc.pipe(res);
     } catch (error) { next(error); }
 }; 

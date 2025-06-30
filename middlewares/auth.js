@@ -6,7 +6,10 @@ import { Employee } from "../models/inhouseUserModel.js";
 import ShipperDriver from "../models/shipper_driverModel.js";
 
 export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
-    const token = req.cookies.token;
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
     if (!token) {
         return next(new ErrorHandler("Please login to access this resource", 400));
     }
@@ -36,7 +39,10 @@ export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
 
 // 🔥 New: Middleware to ensure only shippers can post loads
 export const isShipper = catchAsyncError(async (req, res, next) => {
-    const token = req.cookies.token;
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
     console.log('🔍 Debug - Token:', token ? 'Present' : 'Missing');
     
     if (!token) {
@@ -80,7 +86,10 @@ export const isShipper = catchAsyncError(async (req, res, next) => {
 
 // 🔥 New: Middleware to ensure only truckers can place bids
 export const isTrucker = catchAsyncError(async (req, res, next) => {
-    const token = req.cookies.token;
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
     if (!token) {
         return next(new ErrorHandler("Please login to access this resource", 400));
     }
@@ -120,7 +129,10 @@ export const isTrucker = catchAsyncError(async (req, res, next) => {
 
 
 export const isAuthenticatedEmployee = catchAsyncError(async (req, res, next) => {
-    const token = req.cookies.token;
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
     if (!token) {
         return next(new ErrorHandler("Please login to access this resource", 400));
     }
