@@ -45,11 +45,11 @@ const _dirname = path.dirname(_filename);
 // ];
 
 const allowedOrigins = [
-    ...(process.env.CLIENT_URL?.split(',') || []),
-    "http://192.168.1.7:5173",
-    "https://vpl-liveproject-1.onrender.com",
-    "https://vpowersuperadmin.netlify.app",
-    "http://localhost:5173"
+  ...(process.env.CLIENT_URL?.split(',') || []),
+  "http://192.168.1.7:5173",
+  "https://vpl-liveproject-1.onrender.com",
+  "https://vpowersuperadmin.netlify.app",
+  "http://localhost:5173"
 ];
 
 // app.use(cors({
@@ -65,21 +65,23 @@ const allowedOrigins = [
 // }));
 
 app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin) return callback(null, true); // allow server-to-server or Postman
-      
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        } else {
-          return callback(new Error('Not allowed by CORS'));
-        }
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-      optionsSuccessStatus: 200
-              
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow server-to-server or Postman
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
+
 }));
+
+app.options('*', cors());
 
 
 // app.use(cors({
@@ -114,7 +116,7 @@ app.use('/api/v1/team', teamMemberRouter);
 app.use('/api/v1/hygiene', hygieneRouter);
 app.use('/api/v1/hygiene/self', hygieneRouter);
 app.use('/api/v1/payroll', payrollRouter);
-app.use('/api/v1/analytics/8x8', analytics8x8Routes); 
+app.use('/api/v1/analytics/8x8', analytics8x8Routes);
 app.use('/api/v1/dailytask', dailyTaskRoutes);
 app.use('/api/v1/email-inbox', emailInboxRoutes);
 app.use('/api/v1/chat', chatRoutes);
