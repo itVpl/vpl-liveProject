@@ -507,6 +507,38 @@ export const assignRoleToEmployee = async (req, res) => {
 };
 
 // 🔒 Superadmin assigns allowed modules from ModuleMaster
+
+// export const assignModulesFromMaster = async (req, res) => {
+//   const requestingUser = req.user;
+//   const { empId } = req.params;
+//   const { moduleIds } = req.body;
+
+//   if (!requestingUser || requestingUser.role !== 'superadmin') {
+//     return res.status(403).json({ success: false, message: 'Only superadmin can assign modules.' });
+//   }
+
+//   try {
+//     const employee = await Employee.findOneAndUpdate(
+//       { empId },
+//       { allowedModules: moduleIds },
+//       { new: true }
+//     ).populate('allowedModules');
+
+//     if (!employee) {
+//       return res.status(404).json({ success: false, message: 'Employee not found' });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: 'Modules assigned successfully from master',
+//       employee
+//     });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+
 export const assignModulesFromMaster = async (req, res) => {
   const requestingUser = req.user;
   const { empId } = req.params;
@@ -517,20 +549,27 @@ export const assignModulesFromMaster = async (req, res) => {
   }
 
   try {
-    const employee = await Employee.findOneAndUpdate(
-      { empId },
-      { allowedModules: moduleIds },
-      { new: true }
-    ).populate('allowedModules');
+    const employee = await Employee.findOne({ empId });
 
     if (!employee) {
       return res.status(404).json({ success: false, message: 'Employee not found' });
     }
 
+    const current = employee.allowedModules.map((id) => id.toString());
+    const incoming = moduleIds.map((id) => id.toString());
+
+    // 🔁 Merge unique module IDs
+    const merged = Array.from(new Set([...current, ...incoming]));
+    employee.allowedModules = merged;
+
+    await employee.save();
+
+    const populatedEmployee = await Employee.findOne({ empId }).populate('allowedModules');
+
     res.status(200).json({
       success: true,
       message: 'Modules assigned successfully from master',
-      employee
+      employee: populatedEmployee,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
