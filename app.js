@@ -36,34 +36,52 @@ export const app = express();
 const _filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
 
+
+
 // const allowedOrigins = [
-//     process.env.CLIENT_URL,
-//     "http://192.168.1.7:5173",  
-//     "https://vpl-liveproject-1.onrender.com",
-//     "https://vpowersuperadmin.netlify.app",
-//     "http://localhost:5173"
+//   ...(process.env.CLIENT_URL?.split(',') || []),
+//   "http://192.168.1.7:5173",
+//   "https://vpl-liveproject-1.onrender.com",
+//   "https://vpowersuperadmin.netlify.app",
+//   "https://6863ec860b4af45ad160da8e--fluffy-fenglisu-36edff.netlify.app",
+//   "http://localhost:5173",
+//   "https://fluffy-fenglisu-36edff.netlify.app"
 // ];
 
+
 const allowedOrigins = [
-  ...(process.env.CLIENT_URL?.split(',') || []),
-  "http://192.168.1.7:5173",
-  "https://vpl-liveproject-1.onrender.com",
-  "https://vpowersuperadmin.netlify.app",
-  "https://6863ec860b4af45ad160da8e--fluffy-fenglisu-36edff.netlify.app",
-  "http://localhost:5173",
-  "https://fluffy-fenglisu-36edff.netlify.app"
+    'http://localhost:5173',
+    'http://192.168.1.7:5173',
+    'https://vpowersuperadmin.netlify.app',
+    'https://fluffy-fenglisu-36edff.netlify.app',
 ];
+
+// app.use(cors({
+//     origin: function (origin, callback) {
+//         if (!origin || allowedOrigins.includes(origin)) {
+//             callback(null, true);
+//         } else {
+//             callback(new Error('Not allowed by CORS'));
+//         }
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+//     credentials: true
+// }));
+
 
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+            console.error("❌ CORS Blocked Origin:", origin);
+            callback(new Error('❌ Not allowed by CORS'));
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    credentials: true
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 200
 }));
 
 
