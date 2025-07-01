@@ -49,6 +49,7 @@ const allowedOrigins = [
   "http://192.168.1.7:5173",
   "https://vpl-liveproject-1.onrender.com",
   "https://vpowersuperadmin.netlify.app",
+  "https://6863ec860b4af45ad160da8e--fluffy-fenglisu-36edff.netlify.app",
   "http://localhost:5173"
 ];
 
