@@ -79,13 +79,22 @@ export const endBreak = async (req, res) => {
       await sendOverdueNotification(empId, duration);
     }
 
+    // 🔄 Calculate new remaining time
+    const today = moment().format('YYYY-MM-DD');
+    const todayBreaks = await BreakLog.find({ empId, date: today, endTime: { $exists: true } });
+    const totalUsed = todayBreaks.reduce((sum, b) => sum + (b.durationMinutes || 0), 0);
+    const remaining = Math.max(MAX_BREAK_MINUTES - totalUsed, 0);
+
     res.status(200).json({
       success: true,
       message: `Break ended successfully. ${isOverdue ? 'Break exceeded 60 minutes!' : ''}`,
       empId,
+      breakId: ongoing._id,
       duration,
       overdue: isOverdue,
-      endTime
+      endTime,
+      remainingMinutes: remaining,
+      maxLimit: MAX_BREAK_MINUTES
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
