@@ -19,7 +19,8 @@ import {
   updateDocVerifiedStatus,
   createMeeting,
   getMeetings,
-  getMeetingsByEmpId
+  getMeetingsByEmpId,
+  unassignModulesFromMaster
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -66,6 +67,7 @@ router.get('/activity/employee/:empId', getEmployeeActivityHistory);
 router.patch('/:empId/role-modules', updateRoleAndModules);
 router.patch('/assign-role/:empId', isAuthenticatedEmployee, assignRoleToEmployee);
 router.patch('/assign-modules/:empId', isAuthenticatedEmployee, assignModulesFromMaster);
+router.patch('/unassign-modules/:empId', isAuthenticatedEmployee, unassignModulesFromMaster);
 router.patch('/:empId/doc-verified', isAuthenticatedEmployee, updateDocVerifiedStatus);
 
 // Meeting scheduling routes

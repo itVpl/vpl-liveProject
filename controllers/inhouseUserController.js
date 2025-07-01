@@ -695,6 +695,37 @@ export const getMeetingsByEmpId = async (req, res) => {
   }
 };
 
+// 🔒 Superadmin unassigns allowed modules from ModuleMaster
+export const unassignModulesFromMaster = async (req, res) => {
+  const requestingUser = req.user;
+  const { empId } = req.params;
+  const { moduleIds } = req.body;
+
+  if (!requestingUser || requestingUser.role !== 'superadmin') {
+    return res.status(403).json({ success: false, message: 'Only superadmin can unassign modules.' });
+  }
+
+  try {
+    const employee = await Employee.findOneAndUpdate(
+      { empId },
+      { $pull: { allowedModules: { $in: moduleIds } } },
+      { new: true }
+    ).populate('allowedModules');
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Modules unassigned successfully from master',
+      employee
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 
 
 
