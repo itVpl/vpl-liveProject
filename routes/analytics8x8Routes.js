@@ -1,5 +1,5 @@
 import express from 'express';
-import { getCallRecords } from '../controllers/analytics8x8Controller.js';
+import { getCallRecords, getFilteredCallRecords } from '../controllers/analytics8x8Controller.js';
 
 const router = express.Router();
 
@@ -12,5 +12,6 @@ router.get('/test', (req, res) => {
 });
 
 router.get('/call-records', getCallRecords);
+router.get('/call-records/filter', getFilteredCallRecords);
 
 export default router;
