@@ -9,12 +9,16 @@ const MAX_BREAK_MINUTES = 60;
 export const startBreak = async (req, res) => {
   try {
     const user = req.user;
+    console.log("🔥 req.user in startBreak:", user); // Debug 1
+
     const { empId: requestedEmpId } = req.body;
     const today = moment().format('YYYY-MM-DD');
 
     const empId = (requestedEmpId && (user.role === 'admin' || user.role === 'superadmin'))
       ? requestedEmpId
       : user.empId;
+
+    console.log("🆔 Final empId used for break:", empId); // Debug 2
 
     const ongoing = await BreakLog.findOne({ empId, endTime: null });
     if (ongoing) {
@@ -50,6 +54,7 @@ export const startBreak = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
 
 // End Break
 export const endBreak = async (req, res) => {
