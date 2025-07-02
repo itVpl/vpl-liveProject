@@ -317,6 +317,7 @@ export const loginEmployee = async (req, res) => {
       employee: {
         empId: employee.empId,
         employeeName: employee.employeeName,
+        aliasName: employee.aliasName,
         role: employee.role,
         allowedModules: employee.allowedModules || []
       }
