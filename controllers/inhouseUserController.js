@@ -32,6 +32,7 @@ export const createEmployee = async (req, res) => {
     const {
       empId,
       employeeName,
+      aliasName,
       sex,
       email,
       mobileNo,
@@ -72,6 +73,7 @@ export const createEmployee = async (req, res) => {
     const newEmployeeData = {
       empId,
       employeeName,
+      aliasName,
       sex,
       email,
       mobileNo,

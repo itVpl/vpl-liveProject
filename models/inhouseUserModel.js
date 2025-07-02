@@ -4,6 +4,7 @@ const employeeSchema = new mongoose.Schema({
   empId: { type: String, required: true, unique: true },
 
   employeeName: { type: String, required: true },
+  aliasName: { type: String },
   sex: { type: String, enum: ['Male', 'Female', 'Other'], required: true },
   email: { type: String, required: true, unique: true },
   mobileNo: { type: String, required: true },
