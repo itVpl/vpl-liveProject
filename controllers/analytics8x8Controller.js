@@ -63,7 +63,7 @@ export const getCallRecords = async (req, res) => {
 
 export const getFilteredCallRecords = async (req, res) => {
   try {
-    const { callerName, from, to } = req.query;
+    const { callerName, calleeName, from, to } = req.query;
     console.log('🔄 Getting filtered 8x8 call records...');
 
     // STEP 1: Get Access Token
@@ -103,10 +103,15 @@ export const getFilteredCallRecords = async (req, res) => {
     );
     let records = dataRes.data.data || [];
 
-    // Filter by callerName if provided
-    if (callerName) {
-      const name = callerName.replace(/"/g, '').toLowerCase();
-      records = records.filter(r => (r.callerName || '').toLowerCase().includes(name));
+    // OR condition for callerName and calleeName
+    if (callerName || calleeName) {
+      const caller = callerName ? callerName.replace(/"/g, '').toLowerCase() : null;
+      const callee = calleeName ? calleeName.replace(/"/g, '').toLowerCase() : null;
+      records = records.filter(r => {
+        const callerMatch = caller ? (r.callerName || '').toLowerCase().includes(caller) : false;
+        const calleeMatch = callee ? (r.calleeName || '').toLowerCase().includes(callee) : false;
+        return callerMatch || calleeMatch;
+      });
     }
 
     res.status(200).json({
