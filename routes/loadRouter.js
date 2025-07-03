@@ -32,10 +32,13 @@ loadRouter.get('/stats', getLoadStats); // Public stats route
 loadRouter.get('/test-auth', isAuthenticatedUser, testUserAuth);
 loadRouter.get('/test-model', testLoadModel); // Public test
 
-// Load Management Routes (Protected) - Specific routes first
-loadRouter.post('/create', isShipper, createLoad); // Only shippers can create loads
-loadRouter.get('/shipper', isShipper, getShipperLoads); // Only shippers can view their loads
-loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads); // Truckers can view assigned loads
+// loadRouter.post('/create', isShipper, createLoad); 
+// loadRouter.get('/shipper', isShipper, getShipperLoads); 
+
+
+loadRouter.post('/create', createLoad); 
+loadRouter.get('/shipper',  getShipperLoads);
+loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads); 
 
 // Get all shipments from Tracking table
 loadRouter.get('/all-trackings', getAllTrackings);

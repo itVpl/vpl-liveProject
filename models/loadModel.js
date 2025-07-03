@@ -4,7 +4,8 @@ const loadSchema = new mongoose.Schema({
   shipper: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ShipperDriver',
-    required: true,
+    required: false,
+    default: null,
   },
   origin: {
     addressLine1: { type: String },
