@@ -12,7 +12,7 @@ import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 const router = express.Router();
 
 // Employee access - must come before parameterized routes
-router.get('/me', isAuthenticatedEmployee, getMyAttendance);
+router.get('/my', isAuthenticatedEmployee, getMyAttendance);
 
 // HR/Admin access
 router.get('/', isAuthenticatedEmployee, isHRDepartment, getAllAttendance);

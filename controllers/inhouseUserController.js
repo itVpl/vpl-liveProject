@@ -63,14 +63,7 @@ export const createEmployee = async (req, res) => {
     const experienceLetterPath = req.files && req.files.experienceLetter ? normalizePath(req.files.experienceLetter[0].path) : undefined;
     const bankStatementOrSalarySlipPaths = req.files && req.files.bankStatementOrSalarySlip ? req.files.bankStatementOrSalarySlip.map(f => normalizePath(f.path)) : [];
 
-    console.log('📄 File paths:');
-    console.log('Pan Card:', pancardPath);
-    console.log('Aadhar Card:', aadharcardPath);
-    console.log('Educational Docs:', educationalDocsPaths);
-    console.log('Release Letter:', releaseLetterPath);
-    console.log('Offer Letter:', offerLetterPath);
-    console.log('Experience Letter:', experienceLetterPath);
-    console.log('Bank Statement:', bankStatementOrSalarySlipPaths);
+
 
     const newEmployeeData = {
       empId,
