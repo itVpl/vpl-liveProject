@@ -30,7 +30,8 @@ export const createLoad = async (req, res, next) => {
         }
 
         const newLoad = new Load({
-            shipper: req.user._id,
+            // shipper: req.user._id, // Commented for open access
+            shipper: req.user?._id || null, // or set to a dummy value if needed
             origin: {
                 city: fromCity,
                 state: fromState,
