@@ -33,8 +33,11 @@ loadRouter.get('/test-auth', isAuthenticatedUser, testUserAuth);
 loadRouter.get('/test-model', testLoadModel); // Public test
 
 // Load Management Routes (Protected) - Specific routes first
-loadRouter.post('/create', isShipper, createLoad); // Only shippers can create loads
-loadRouter.get('/shipper', isShipper, getShipperLoads); // Only shippers can view their loads
+// TEMP: Commented out isShipper middleware for open access
+// loadRouter.post('/create', isShipper, createLoad); // Only shippers can create loads
+// loadRouter.get('/shipper', isShipper, getShipperLoads); // Only shippers can view their loads
+loadRouter.post('/create', createLoad); // Anyone can create loads (TEMP)
+loadRouter.get('/shipper', getShipperLoads); // Anyone can get shipper loads (TEMP)
 loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads); // Truckers can view assigned loads
 
 // Get all shipments from Tracking table
