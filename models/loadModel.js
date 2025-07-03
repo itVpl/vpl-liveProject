@@ -11,14 +11,14 @@ const loadSchema = new mongoose.Schema({
     addressLine1: { type: String },
     addressLine2: { type: String },
     city: { type: String, required: true },
-    state: { type: String, required: true },
+    state: { type: String, required: false },
     zip: { type: String },
   },
   destination: {
     addressLine1: { type: String },
     addressLine2: { type: String },
     city: { type: String, required: true },
-    state: { type: String, required: true },
+    state: { type: String, required: false },
     zip: { type: String },
   },
   weight: {
