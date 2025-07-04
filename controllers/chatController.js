@@ -94,4 +94,32 @@ export const markAsSeen = async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+};
+
+// Search employees for chat initiation
+export const searchEmployeesForChat = async (req, res) => {
+  try {
+    const myEmpId = req.user.empId;
+    const q = req.query.q?.trim();
+    if (!q) {
+      return res.status(400).json({ error: 'Query parameter q is required' });
+    }
+    // Case-insensitive, partial match on employeeName or empId, exclude self
+    const employees = await Employee.find({
+      $and: [
+        {
+          $or: [
+            { employeeName: { $regex: q, $options: 'i' } },
+            { empId: { $regex: q, $options: 'i' } }
+          ]
+        },
+        { empId: { $ne: myEmpId } }
+      ]
+    })
+      .select('empId employeeName email department designation')
+      .limit(20);
+    res.json(employees);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }; 

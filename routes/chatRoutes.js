@@ -1,5 +1,5 @@
 import express from 'express';
-import { sendMessage, getChat, getChatList, markAsSeen } from '../controllers/chatController.js';
+import { sendMessage, getChat, getChatList, markAsSeen, searchEmployeesForChat } from '../controllers/chatController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -10,5 +10,6 @@ router.post('/send', isAuthenticatedEmployee, sendMessage);
 router.get('/with/:empId', isAuthenticatedEmployee, getChat);
 router.get('/list', isAuthenticatedEmployee, getChatList);
 router.patch('/seen/:empId', isAuthenticatedEmployee, markAsSeen);
+router.get('/search-users', isAuthenticatedEmployee, searchEmployeesForChat);
 
 export default router; 
