@@ -9,6 +9,7 @@ const breakLogSchema = new mongoose.Schema({
   startTime: { type: Date, required: true },
   endTime: { type: Date },
   durationMinutes: { type: Number },
+  durationSeconds: { type: Number },
   date: { type: String, required: true }, // Format: YYYY-MM-DD
   overdue: { type: Boolean, default: false }
 }, { timestamps: true });

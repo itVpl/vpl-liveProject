@@ -41,6 +41,51 @@ export const startBreak = async (req, res) => {
       date: today
     });
 
+    // Send email to user and department admin
+    try {
+      const employee = await Employee.findOne({ empId });
+      if (employee && employee.email) {
+        const subject = `🟢 Break Started - ${employee.employeeName}`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; background: #f4f8fb; padding: 32px; border-radius: 12px; max-width: 480px; margin: 24px auto; box-shadow: 0 2px 8px #e3eaf1;">
+            <h2 style="color: #2a7ae2; text-align: center; margin-bottom: 16px;">🟢 Break Started</h2>
+            <p style="font-size: 18px; color: #222; text-align: center;"><b>${employee.employeeName}</b> (${employee.empId})</p>
+            <p style="font-size: 15px; color: #555; text-align: center; margin-bottom: 16px;">Department: <b>${employee.department || 'N/A'}</b></p>
+            <div style="background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 12px; border: 1px solid #e3eaf1;">
+              <p style="font-size: 16px; color: #333;"><b>Break Start Time:</b> <span style="color: #2a7ae2;">${startTime.toLocaleString()}</span></p>
+            </div>
+            <p style="font-size: 14px; color: #888; text-align: center; margin-top: 18px;">This is an automated notification from <b>V Power Logistics</b>.</p>
+          </div>
+        `;
+        await sendEmail({ to: employee.email, subject, html });
+      }
+      // Send to department admin (not the user themself)
+      if (employee && employee.department) {
+        const admin = await Employee.findOne({
+          department: employee.department,
+          role: { $in: ['admin', 'superadmin'] },
+          email: { $ne: employee.email }
+        });
+        if (admin && admin.email) {
+          const subject = `🟢 Break Started - ${employee.employeeName}`;
+          const html = `
+            <div style="font-family: Arial, sans-serif; background: #f4f8fb; padding: 32px; border-radius: 12px; max-width: 480px; margin: 24px auto; box-shadow: 0 2px 8px #e3eaf1;">
+              <h2 style="color: #2a7ae2; text-align: center; margin-bottom: 16px;">🟢 Break Started (Team Member)</h2>
+              <p style="font-size: 18px; color: #222; text-align: center;"><b>${employee.employeeName}</b> (${employee.empId})</p>
+              <p style="font-size: 15px; color: #555; text-align: center; margin-bottom: 16px;">Department: <b>${employee.department || 'N/A'}</b></p>
+              <div style="background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 12px; border: 1px solid #e3eaf1;">
+                <p style="font-size: 16px; color: #333;"><b>Break Start Time:</b> <span style="color: #2a7ae2;">${startTime.toLocaleString()}</span></p>
+              </div>
+              <p style="font-size: 14px; color: #888; text-align: center; margin-top: 18px;">This is an automated notification from <b>V Power Logistics</b>.</p>
+            </div>
+          `;
+          await sendEmail({ to: admin.email, subject, html });
+        }
+      }
+    } catch (emailErr) {
+      console.error('❌ Failed to send break start email:', emailErr);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Break started successfully.',
@@ -72,34 +117,85 @@ export const endBreak = async (req, res) => {
     }
 
     const endTime = new Date();
-    const duration = Math.floor((endTime - ongoing.startTime) / 60000);
-    const isOverdue = duration > MAX_BREAK_MINUTES;
+    const durationMs = endTime - ongoing.startTime;
+    const durationSeconds = Math.floor(durationMs / 1000);
+    const durationMinutes = Math.floor(durationMs / 60000);
+    const isOverdue = durationMinutes > MAX_BREAK_MINUTES;
 
     ongoing.endTime = endTime;
-    ongoing.durationMinutes = duration;
+    ongoing.durationMinutes = durationMinutes;
+    ongoing.durationSeconds = durationSeconds;
     ongoing.overdue = isOverdue;
     await ongoing.save();
 
     if (isOverdue) {
-      await sendOverdueNotification(empId, duration);
+      await sendOverdueNotification(empId, durationMinutes);
+    }
+
+    // Send email to user and department admin on break end
+    try {
+      const employee = await Employee.findOne({ empId });
+      if (employee && employee.email) {
+        const subject = `🔴 Break Ended - ${employee.employeeName}`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; background: #fff7f7; padding: 32px; border-radius: 12px; max-width: 480px; margin: 24px auto; box-shadow: 0 2px 8px #f3e3e3;">
+            <h2 style="color: #e22a2a; text-align: center; margin-bottom: 16px;">🔴 Break Ended</h2>
+            <p style="font-size: 18px; color: #222; text-align: center;"><b>${employee.employeeName}</b> (${employee.empId})</p>
+            <p style="font-size: 15px; color: #555; text-align: center; margin-bottom: 16px;">Department: <b>${employee.department || 'N/A'}</b></p>
+            <div style="background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 12px; border: 1px solid #f3e3e3;">
+              <p style="font-size: 16px; color: #333;"><b>Break End Time:</b> <span style="color: #e22a2a;">${endTime.toLocaleString()}</span></p>
+              <p style="font-size: 16px; color: #333;"><b>Duration:</b> <span style="color: #e22a2a;">${durationMinutes} min ${durationSeconds % 60} sec</span></p>
+            </div>
+            <p style="font-size: 14px; color: #888; text-align: center; margin-top: 18px;">This is an automated notification from <b>V Power Logistics</b>.</p>
+          </div>
+        `;
+        await sendEmail({ to: employee.email, subject, html });
+      }
+      // Send to department admin (not the user themself)
+      if (employee && employee.department) {
+        const admin = await Employee.findOne({
+          department: employee.department,
+          role: { $in: ['admin', 'superadmin'] },
+          email: { $ne: employee.email }
+        });
+        if (admin && admin.email) {
+          const subject = `🔴 Break Ended - ${employee.employeeName}`;
+          const html = `
+            <div style="font-family: Arial, sans-serif; background: #fff7f7; padding: 32px; border-radius: 12px; max-width: 480px; margin: 24px auto; box-shadow: 0 2px 8px #f3e3e3;">
+              <h2 style="color: #e22a2a; text-align: center; margin-bottom: 16px;">🔴 Break Ended (Team Member)</h2>
+              <p style="font-size: 18px; color: #222; text-align: center;"><b>${employee.employeeName}</b> (${employee.empId})</p>
+              <p style="font-size: 15px; color: #555; text-align: center; margin-bottom: 16px;">Department: <b>${employee.department || 'N/A'}</b></p>
+              <div style="background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 12px; border: 1px solid #f3e3e3;">
+                <p style="font-size: 16px; color: #333;"><b>Break End Time:</b> <span style="color: #e22a2a;">${endTime.toLocaleString()}</span></p>
+                <p style="font-size: 16px; color: #333;"><b>Duration:</b> <span style="color: #e22a2a;">${durationMinutes} min ${durationSeconds % 60} sec</span></p>
+              </div>
+              <p style="font-size: 14px; color: #888; text-align: center; margin-top: 18px;">This is an automated notification from <b>V Power Logistics</b>.</p>
+            </div>
+          `;
+          await sendEmail({ to: admin.email, subject, html });
+        }
+      }
+    } catch (emailErr) {
+      console.error('❌ Failed to send break end email:', emailErr);
     }
 
     // 🔄 Calculate new remaining time
     const today = moment().format('YYYY-MM-DD');
     const todayBreaks = await BreakLog.find({ empId, date: today, endTime: { $exists: true } });
-    const totalUsed = todayBreaks.reduce((sum, b) => sum + (b.durationMinutes || 0), 0);
-    const remaining = Math.max(MAX_BREAK_MINUTES - totalUsed, 0);
+    const totalUsed = todayBreaks.reduce((sum, b) => sum + (b.durationSeconds || 0), 0);
+    const remaining = Math.max((MAX_BREAK_MINUTES * 60) - totalUsed, 0);
 
     res.status(200).json({
       success: true,
       message: `Break ended successfully. ${isOverdue ? 'Break exceeded 60 minutes!' : ''}`,
       empId,
       breakId: ongoing._id,
-      duration,
+      durationSeconds,
+      durationMinutes,
       overdue: isOverdue,
       endTime,
-      remainingMinutes: remaining,
-      maxLimit: MAX_BREAK_MINUTES
+      remainingSeconds: remaining,
+      maxLimitSeconds: MAX_BREAK_MINUTES * 60
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
