@@ -27,6 +27,7 @@ export const getChat = async (req, res) => {
     const myUser = await Employee.findOne({ empId: myEmpId });
     const otherUser = await Employee.findOne({ empId });
     if (!myUser || !otherUser) return res.status(404).json({ error: 'User not found' });
+    
     const chat = await Message.find({
       $or: [
         { sender: myUser._id, receiver: otherUser._id },
@@ -37,7 +38,16 @@ export const getChat = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(limit)
       .lean();
-    res.json(chat.reverse());
+
+    // Add empId information to each message
+    const chatWithEmpIds = chat.map(msg => ({
+      ...msg,
+      senderEmpId: msg.sender.equals(myUser._id) ? myEmpId : empId,
+      receiverEmpId: msg.sender.equals(myEmpId) ? empId : myEmpId,
+      isMyMessage: msg.sender.equals(myUser._id)
+    }));
+
+    res.json(chatWithEmpIds.reverse());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
