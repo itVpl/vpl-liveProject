@@ -43,7 +43,8 @@ export const getChat = async (req, res) => {
     const chatWithEmpIds = chat.map(msg => ({
       ...msg,
       senderEmpId: msg.sender.equals(myUser._id) ? myEmpId : empId,
-      receiverEmpId: msg.sender.equals(myEmpId) ? empId : myEmpId,
+      // receiverEmpId: msg.sender.equals(myEmpId) ? empId : myEmpId,
+      receiverEmpId: msg.sender.equals(myUser._id) ? empId : myEmpId,
       isMyMessage: msg.sender.equals(myUser._id)
     }));
 
