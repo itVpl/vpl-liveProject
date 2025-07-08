@@ -6,12 +6,25 @@ import { Employee } from './models/inhouseUserModel.js';
 import chatRoutes from './routes/chatRoutes.js';
 
 const server = http.createServer(app);
+
+// const io = new Server(server, {
+//   cors: {
+//     origin: '*', // You can restrict this to your frontend origin
+//     methods: ['GET', 'POST'],
+//     credentials: true
+//   }
+// });
+
+
 const io = new Server(server, {
   cors: {
-    origin: '*', // You can restrict this to your frontend origin
-    methods: ['GET', 'POST']
+    origin: ['http://localhost:5173', 'https://fluffy-fenglisu-36edff.netlify.app'], // ✅ allow both
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
+
+
 
 const onlineUsers = new Map();
 
