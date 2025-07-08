@@ -18,6 +18,39 @@ import { Employee } from '../models/inhouseUserModel.js';
 //   }
 // };
 
+// export const sendMessage = (io) => async (req, res) => {
+//   try {
+//     const { receiverEmpId, message, replyTo } = req.body;
+//     const senderEmpId = req.user.empId;
+
+//     const senderUser = await Employee.findOne({ empId: senderEmpId });
+//     const receiverUser = await Employee.findOne({ empId: receiverEmpId });
+
+//     if (!senderUser || !receiverUser) {
+//       return res.status(404).json({ error: 'Sender or receiver not found' });
+//     }
+
+//     const newMsg = await Message.create({
+//       sender: senderUser._id,
+//       receiver: receiverUser._id,
+//       message,
+//       status: 'sent',
+//       replyTo: replyTo || null
+//     });
+
+//     // ✅ Emit socket message event
+//     io.emit("newMessage", {
+//       senderEmpId,
+//       receiverEmpId
+//     });
+
+//     res.status(201).json(newMsg);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
+
+
 export const sendMessage = (io) => async (req, res) => {
   try {
     const { receiverEmpId, message, replyTo } = req.body;
@@ -38,13 +71,21 @@ export const sendMessage = (io) => async (req, res) => {
       replyTo: replyTo || null
     });
 
-    // ✅ Emit socket message event
-    io.emit("newMessage", {
+    const enrichedMessage = {
+      _id: newMsg._id,
+      message: newMsg.message,
+      timestamp: newMsg.timestamp,
+      status: newMsg.status,
       senderEmpId,
-      receiverEmpId
-    });
+      receiverEmpId,
+      replyTo: newMsg.replyTo || null,
+    };
 
-    res.status(201).json(newMsg);
+    // ✅ Emit to all (you can restrict this later using socket IDs)
+    io.emit("receive_message", enrichedMessage);
+    io.emit("message_sent", enrichedMessage);
+
+    res.status(201).json(enrichedMessage);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
