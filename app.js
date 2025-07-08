@@ -29,9 +29,9 @@ import payrollRouter from './routes/payrollRoutes.js';
 import analytics8x8Routes from './routes/analytics8x8Routes.js';
 import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
-import chatRoutes from './routes/chatRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import rateLimit from 'express-rate-limit';
+
 
 export const app = express();
 
@@ -158,7 +158,6 @@ app.use('/api/v1/payroll', payrollRouter);
 app.use('/api/v1/analytics/8x8', analytics8x8Routes);
 app.use('/api/v1/dailytask', dailyTaskRoutes);
 app.use('/api/v1/email-inbox', emailInboxRoutes);
-app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/meeting', meetingRoutes);
 setInterval(checkOverdueBreaks, 60000);
 

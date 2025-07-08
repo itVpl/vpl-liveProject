@@ -3,6 +3,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import Message from './models/Message.js';
 import { Employee } from './models/inhouseUserModel.js';
+import chatRoutes from './routes/chatRoutes.js';
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -66,6 +67,9 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// Setup chat routes with io instance
+app.use('/api/v1/chat', chatRoutes(io));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
