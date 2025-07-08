@@ -30,6 +30,8 @@ import analytics8x8Routes from './routes/analytics8x8Routes.js';
 import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import meetingRoutes from './routes/meetingRoutes.js';
+import rateLimit from 'express-rate-limit';
 
 export const app = express();
 
@@ -125,6 +127,17 @@ app.use(express.urlencoded({ extended: true }));
 // Move loadRouter before express.json and express.urlencoded for file upload compatibility
 app.use('/api/v1/load', loadRouter);
 
+// Rate Limiter Middleware
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    status: 429,
+    error: 'Too many requests, please try again after 15 minutes.'
+  }
+});
+app.use(limiter);
+
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
 app.use('/api/v1/bid', bidRouter);
@@ -146,6 +159,7 @@ app.use('/api/v1/analytics/8x8', analytics8x8Routes);
 app.use('/api/v1/dailytask', dailyTaskRoutes);
 app.use('/api/v1/email-inbox', emailInboxRoutes);
 app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/meeting', meetingRoutes);
 setInterval(checkOverdueBreaks, 60000);
 
 
