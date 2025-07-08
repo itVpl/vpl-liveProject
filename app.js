@@ -130,13 +130,13 @@ app.use('/api/v1/load', loadRouter);
 // Rate Limiter Middleware
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 500, // Increased limit for more requests per IP
   message: {
     status: 429,
     error: 'Too many requests, please try again after 15 minutes.'
   }
 });
-app.use(limiter);
+app.use('/api', limiter);
 
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
