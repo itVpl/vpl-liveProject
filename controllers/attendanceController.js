@@ -1,6 +1,7 @@
 import { UserActivity } from '../models/userActivityModel.js';
 import { Employee } from '../models/inhouseUserModel.js';
 import { startOfDay, endOfDay } from 'date-fns';
+import moment from 'moment-timezone';
 
 // 🔹 Get All Attendance
 // export const getAllAttendance = async (req, res) => {
@@ -164,16 +165,7 @@ export const getAttendanceByDateRange = async (req, res) => {
 // ✅ Helper functions
 const formatDate = (d) => {
   if (!d) return '-';
-  return new Date(d).toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).replace(/\//g, '-').replace(',', '');
+  return moment(d).tz('America/New_York').format('MM-DD-YYYY HH:mm:ss');
 };
 
 const formatDateOnly = (d) => {
@@ -334,6 +326,231 @@ export const getMyAttendance = async (req, res) => {
       };
     });
     res.status(200).json({ success: true, empId, month, records: enriched });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 🔹 Get User's Last 30 Days Attendance
+export const getUserLast30DaysAttendance = async (req, res) => {
+  try {
+    const empId = req.user.empId;
+    
+    // Calculate date range for last 30 days
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    
+    // Get all attendance records for the last 30 days
+    const records = await UserActivity.find({
+      empId,
+      date: { $gte: startDate, $lte: endDate }
+    }).sort({ date: 1 }).lean();
+    
+    // Group by date to get daily attendance
+    const dailyAttendance = {};
+    records.forEach(record => {
+      const dateKey = formatDateOnly(record.date);
+      if (!dailyAttendance[dateKey]) {
+        dailyAttendance[dateKey] = {
+          date: dateKey,
+          totalHours: 0,
+          sessions: [],
+          status: 'absent'
+        };
+      }
+      
+      if (record.loginTime && record.logoutTime) {
+        const hours = (new Date(record.logoutTime) - new Date(record.loginTime)) / (1000 * 60 * 60);
+        dailyAttendance[dateKey].totalHours += hours;
+        dailyAttendance[dateKey].sessions.push({
+          loginTime: formatDate(record.loginTime),
+          logoutTime: formatDate(record.logoutTime),
+          duration: formatDuration(hours)
+        });
+      }
+    });
+    
+    // Calculate attendance statistics
+    let presentDays = 0;
+    let halfDays = 0;
+    let absentDays = 0;
+    let totalWorkingHours = 0;
+    
+    // Generate all dates in the range
+    const allDates = [];
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      allDates.push(new Date(d.getTime()));
+    }
+    
+    const attendanceDetails = allDates.map(date => {
+      const dateKey = formatDateOnly(date);
+      const dayAttendance = dailyAttendance[dateKey];
+      
+      if (dayAttendance) {
+        totalWorkingHours += dayAttendance.totalHours;
+        
+        if (dayAttendance.totalHours >= 8) {
+          presentDays++;
+          dayAttendance.status = 'present';
+        } else if (dayAttendance.totalHours > 0) {
+          halfDays++;
+          dayAttendance.status = 'half day';
+        } else {
+          absentDays++;
+          dayAttendance.status = 'absent';
+        }
+      } else {
+        absentDays++;
+        return {
+          date: dateKey,
+          totalHours: 0,
+          sessions: [],
+          status: 'absent'
+        };
+      }
+      
+      return dayAttendance;
+    });
+    
+    // Calculate attendance percentage
+    const totalDays = 30;
+    const attendancePercentage = ((presentDays + (halfDays * 0.5)) / totalDays * 100).toFixed(2);
+    
+    res.status(200).json({
+      success: true,
+      empId,
+      period: {
+        startDate: formatDateOnly(startDate),
+        endDate: formatDateOnly(endDate),
+        totalDays
+      },
+      statistics: {
+        presentDays,
+        halfDays,
+        absentDays,
+        totalWorkingHours: totalWorkingHours.toFixed(2),
+        attendancePercentage: parseFloat(attendancePercentage)
+      },
+      attendanceDetails
+    });
+    
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 🔹 Get User's Present Days Count (Last 30 Days)
+export const getUserPresentDaysCount = async (req, res) => {
+  try {
+    const empId = req.user.empId;
+    
+    // Calculate date range for last 30 days
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    
+    // Get all attendance records for the last 30 days
+    const records = await UserActivity.find({
+      empId,
+      date: { $gte: startDate, $lte: endDate }
+    }).lean();
+    
+    // Group by date and calculate daily hours
+    const dailyHours = {};
+    records.forEach(record => {
+      const dateKey = formatDateOnly(record.date);
+      if (!dailyHours[dateKey]) {
+        dailyHours[dateKey] = 0;
+      }
+      
+      if (record.loginTime && record.logoutTime) {
+        const hours = (new Date(record.logoutTime) - new Date(record.loginTime)) / (1000 * 60 * 60);
+        dailyHours[dateKey] += hours;
+      }
+    });
+    
+    // Count present days (8+ hours = present day)
+    let presentDays = 0;
+    let halfDays = 0;
+    
+    Object.values(dailyHours).forEach(hours => {
+      if (hours >= 8) {
+        presentDays++;
+      } else if (hours > 0) {
+        halfDays++;
+      }
+    });
+    
+    res.status(200).json({
+      success: true,
+      empId,
+      period: {
+        startDate: formatDateOnly(startDate),
+        endDate: formatDateOnly(endDate),
+        totalDays: 30
+      },
+      attendance: {
+        presentDays,
+        halfDays,
+        absentDays: 30 - presentDays - halfDays,
+        totalPresentDays: presentDays + halfDays
+      },
+      message: `User was present for ${presentDays} full days and ${halfDays} half days in the last 30 days`
+    });
+    
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getUserPresentDaysCountCurrentMonth = async (req, res) => {
+  try {
+    const empId = req.user.empId;
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
+    const endDate = now;
+    const records = await UserActivity.find({
+      empId,
+      date: { $gte: startDate, $lte: endDate }
+    }).lean();
+    const dailyHours = {};
+    records.forEach(record => {
+      const dateKey = formatDateOnly(record.date);
+      if (!dailyHours[dateKey]) {
+        dailyHours[dateKey] = 0;
+      }
+      if (record.loginTime && record.logoutTime) {
+        const hours = (new Date(record.logoutTime) - new Date(record.loginTime)) / (1000 * 60 * 60);
+        dailyHours[dateKey] += hours;
+      }
+    });
+    let presentDays = 0;
+    let halfDays = 0;
+    Object.values(dailyHours).forEach(hours => {
+      if (hours >= 8) {
+        presentDays++;
+      } else if (hours > 0) {
+        halfDays++;
+      }
+    });
+    const totalDays = (endDate.getDate());
+    res.status(200).json({
+      success: true,
+      empId,
+      period: {
+        startDate: formatDateOnly(startDate),
+        endDate: formatDateOnly(endDate),
+        totalDays
+      },
+      attendance: {
+        presentDays,
+        halfDays,
+        absentDays: totalDays - presentDays - halfDays,
+        totalPresentDays: presentDays + halfDays
+      },
+      message: `User was present for ${presentDays} full days and ${halfDays} half days in the current month.`
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
