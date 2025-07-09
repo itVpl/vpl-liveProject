@@ -8,6 +8,7 @@ import { errorMiddleware } from './middlewares/error.js';
 import userRouter from './routes/userRouter.js';
 import vehicleRouter from './routes/vehicleRouter.js';
 import { removeUnverifiedAccounts } from './automation/removeUnverifiedAccount.js';
+import { createDailyTargetsForAllEmployees, checkOverdueTargets } from './automation/createDailyTargets.js';
 import loadRouter from './routes/loadRouter.js';
 import bidRouter from './routes/bidRouter.js';
 import loadBoardRouter from './routes/loadBoardRoutes.js';
@@ -30,6 +31,7 @@ import analytics8x8Routes from './routes/analytics8x8Routes.js';
 import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
+import dayTargetRoutes from './routes/dayTargetRoutes.js';
 import rateLimit from 'express-rate-limit';
 
 
@@ -136,7 +138,12 @@ const limiter = rateLimit({
     error: 'Too many requests, please try again after 15 minutes.'
   }
 });
-app.use('/api', limiter);
+app.use(limiter); // Apply to all routes
+
+// Friendly root route
+app.get('/', (req, res) => {
+  res.send('VPL Live Project API is running.');
+});
 
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/vehicle', vehicleRouter);
@@ -159,7 +166,18 @@ app.use('/api/v1/analytics/8x8', analytics8x8Routes);
 app.use('/api/v1/dailytask', dailyTaskRoutes);
 app.use('/api/v1/email-inbox', emailInboxRoutes);
 app.use('/api/v1/meeting', meetingRoutes);
+app.use('/api/v1/daytarget', dayTargetRoutes);
 setInterval(checkOverdueBreaks, 60000);
+
+// Daily target automation - run every day at 9 AM
+setInterval(async () => {
+  const now = new Date();
+  if (now.getHours() === 9 && now.getMinutes() === 0) {
+    console.log('🔄 Running daily target automation...');
+    await createDailyTargetsForAllEmployees();
+    await checkOverdueTargets();
+  }
+}, 60000); // Check every minute
 
 
 removeUnverifiedAccounts();
