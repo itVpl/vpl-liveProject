@@ -140,6 +140,7 @@ export const loginDriver = async (req, res, next) => {
         }
 
         // ✅ 7. Generate Token
+        console.log('🔍 Debug - Driver ID for JWT:', driver._id);
         const token = jwt.sign({ id: driver._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         // ✅ 8. Success Response
@@ -294,7 +295,7 @@ export const getAssignedShipments = async (req, res, next) => {
 export const markArrivalAndUpload = async (req, res, next) => {
     try {
         const { loadId } = req.params;
-        const { type } = req.body; // 'empty', 'loaded', 'pod', 'teir'
+        const { type, location, notes, arrivalType } = req.body; // 'empty', 'loaded', 'pod', 'teir', 'origin', 'destination'
         const files = req.files || [];
 
         const load = await Load.findById(loadId);
@@ -305,9 +306,33 @@ export const markArrivalAndUpload = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        // Mark originPlace as reached
-        if (!load.originPlace) load.originPlace = {};
-        load.originPlace.status = 1;
+        // Validate arrival type
+        if (!arrivalType || !['origin', 'destination'].includes(arrivalType)) {
+            return res.status(400).json({ success: false, message: 'Arrival type must be origin or destination' });
+        }
+
+        // Mark arrival based on type
+        if (arrivalType === 'origin') {
+            if (!load.originPlace) load.originPlace = {};
+            load.originPlace.status = 1;
+            load.originPlace.arrivedAt = new Date();
+            load.originPlace.notes = notes || '';
+            load.originPlace.location = location || '';
+            
+            // Update load status to 'In Transit' when arriving at origin
+            if (load.status === 'Assigned') {
+                load.status = 'In Transit';
+            }
+        } else if (arrivalType === 'destination') {
+            if (!load.destinationPlace) load.destinationPlace = {};
+            load.destinationPlace.status = 1;
+            load.destinationPlace.arrivedAt = new Date();
+            load.destinationPlace.notes = notes || '';
+            load.destinationPlace.location = location || '';
+            
+            // Update load status to 'Delivered' when arriving at destination
+            load.status = 'Delivered';
+        }
 
         // Save images as per type
         if (load.loadType === 'OTR') {
@@ -318,8 +343,180 @@ export const markArrivalAndUpload = async (req, res, next) => {
             load.teirTickets.push(...files.map(f => f.path));
         }
 
+        // Update tracking status
+        const Tracking = (await import('../models/Tracking.js')).default;
+        const tracking = await Tracking.findOne({ load: load._id });
+        if (tracking) {
+            if (arrivalType === 'origin') {
+                tracking.status = 'in_transit';
+            } else if (arrivalType === 'destination') {
+                tracking.status = 'delivered';
+                tracking.endedAt = new Date();
+            }
+            await tracking.save();
+        }
+
         await load.save();
-        res.status(200).json({ success: true, message: 'Arrival marked and images uploaded', load });
+        
+        res.status(200).json({ 
+            success: true, 
+            message: `Arrival marked at ${arrivalType} and images uploaded`, 
+            load,
+            arrivalType,
+            timestamp: new Date()
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Get arrival history for a specific load
+export const getArrivalHistory = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+        
+        const load = await Load.findById(loadId);
+        if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
+
+        // Only assigned driver can view
+        if (!load.assignedTo || load.assignedTo.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const arrivalHistory = {
+            origin: load.originPlace || {},
+            destination: load.destinationPlace || {},
+            images: {
+                emptyTruck: load.emptyTruckImages || [],
+                loadedTruck: load.loadedTruckImages || [],
+                pod: load.podImages || [],
+                teirTickets: load.teirTickets || []
+            },
+            loadStatus: load.status,
+            loadType: load.loadType
+        };
+
+        res.status(200).json({ 
+            success: true, 
+            arrivalHistory,
+            loadId 
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Update arrival status (for corrections)
+export const updateArrivalStatus = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+        const { arrivalType, status, notes } = req.body; // arrivalType: 'origin' or 'destination'
+
+        const load = await Load.findById(loadId);
+        if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
+
+        // Only assigned driver can update
+        if (!load.assignedTo || load.assignedTo.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        if (arrivalType === 'origin') {
+            if (!load.originPlace) load.originPlace = {};
+            load.originPlace.status = status;
+            load.originPlace.notes = notes || load.originPlace.notes;
+        } else if (arrivalType === 'destination') {
+            if (!load.destinationPlace) load.destinationPlace = {};
+            load.destinationPlace.status = status;
+            load.destinationPlace.notes = notes || load.destinationPlace.notes;
+        } else {
+            return res.status(400).json({ success: false, message: 'Invalid arrival type' });
+        }
+
+        await load.save();
+        
+        res.status(200).json({ 
+            success: true, 
+            message: `${arrivalType} arrival status updated`,
+            load 
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Get all arrival records for driver
+export const getAllArrivalRecords = async (req, res, next) => {
+    try {
+        const driverId = req.user._id;
+        
+        const loads = await Load.find({ assignedTo: driverId })
+            .select('originPlace destinationPlace status loadType shipmentNumber origin destination createdAt')
+            .populate('shipper', 'compName')
+            .sort({ createdAt: -1 });
+
+        const arrivalRecords = loads.map(load => ({
+            loadId: load._id,
+            shipmentNumber: load.shipmentNumber,
+            shipper: load.shipper?.compName,
+            loadType: load.loadType,
+            status: load.status,
+            origin: {
+                address: `${load.origin.city}, ${load.origin.state}`,
+                arrival: load.originPlace || {}
+            },
+            destination: {
+                address: `${load.destination.city}, ${load.destination.state}`,
+                arrival: load.destinationPlace || {}
+            },
+            createdAt: load.createdAt
+        }));
+
+        res.status(200).json({ 
+            success: true, 
+            totalRecords: arrivalRecords.length,
+            arrivalRecords 
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Get logged-in driver's profile
+export const getMyProfile = async (req, res, next) => {
+    try {
+        // Only allow if user is a driver (not trucker or shipper)
+        // Driver model has no userType, so check if req.user is instance of Driver
+        if (!req.user || req.user.constructor.modelName !== 'Driver') {
+            return res.status(403).json({ success: false, message: 'Only drivers can access this route' });
+        }
+        // Remove password from response
+        const { password, ...driverData } = req.user.toObject();
+        res.status(200).json({ success: true, driver: driverData });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Get driver details by ID (public route)
+export const getDriverDetailsById = async (req, res, next) => {
+    try {
+        const { driverId } = req.params;
+        
+        const driver = await Driver.findById(driverId)
+            .populate('truckerId', 'compName mc_dot_no')
+            .select('-password');
+            
+        if (!driver) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Driver not found with this ID' 
+            });
+        }
+        
+        res.status(200).json({ 
+            success: true, 
+            driver 
+        });
     } catch (err) {
         next(err);
     }
