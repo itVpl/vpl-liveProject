@@ -131,27 +131,78 @@ const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // ✅ 1. Required Field Validation
         if (!email || !password) {
-            return res.status(400).json({ success: false, message: 'Email and password are required' });
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required',
+                errors: {
+                    email: !email ? 'Email is required' : null,
+                    password: !password ? 'Password is required' : null
+                }
+            });
         }
 
-        const user = await ShipperDriver.findOne({ email });
+        // ✅ 2. Email Format Validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please enter a valid email address',
+                errors: {
+                    email: 'Invalid email format'
+                }
+            });
+        }
+
+        // ✅ 3. Password Length Validation
+        if (password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 6 characters long',
+                errors: {
+                    password: 'Password must be at least 6 characters'
+                }
+            });
+        }
+
+        // ✅ 4. Email Trim and Lowercase
+        const cleanEmail = email.trim().toLowerCase();
+
+        // ✅ 5. Find User
+        const user = await ShipperDriver.findOne({ email: cleanEmail });
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
+            return res.status(404).json({
+                success: false,
+                message: 'User not found with this email address',
+                errors: {
+                    email: 'No user found with this email'
+                }
+            });
         }
 
-        // 🔥 Check status - Only approved users can login
+        // ✅ 6. Check Account Status
         if (user.status !== 'approved') {
             return res.status(403).json({
                 success: false,
                 message: `Your account is ${user.status}. Please wait for admin approval.`,
+                errors: {
+                    email: `Account is ${user.status}`
+                },
                 status: user.status
             });
         }
 
+        // ✅ 7. Password Verification
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid password',
+                errors: {
+                    password: 'Incorrect password'
+                }
+            });
         }
 
         const token = jwt.sign(

@@ -2,6 +2,7 @@ import Driver from "../models/driverModel.js";
 import ShipperDriver from "../models/shipper_driverModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { Load } from "../models/loadModel.js";
 
 // export const registerDriver = async (req, res, next) => {
 //     try {
@@ -75,14 +76,72 @@ export const loginDriver = async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
-        const driver = await Driver.findOne({ email }).populate('truckerId', 'compName mc_dot_no');
-        if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
+        // ✅ 1. Required Field Validation
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required',
+                errors: {
+                    email: !email ? 'Email is required' : null,
+                    password: !password ? 'Password is required' : null
+                }
+            });
+        }
 
+        // ✅ 2. Email Format Validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please enter a valid email address',
+                errors: {
+                    email: 'Invalid email format'
+                }
+            });
+        }
+
+        // ✅ 3. Password Length Validation
+        if (password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 6 characters long',
+                errors: {
+                    password: 'Password must be at least 6 characters'
+                }
+            });
+        }
+
+        // ✅ 4. Email Trim and Lowercase
+        const cleanEmail = email.trim().toLowerCase();
+
+        // ✅ 5. Find Driver
+        const driver = await Driver.findOne({ email: cleanEmail }).populate('truckerId', 'compName mc_dot_no');
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: 'Driver not found with this email address',
+                errors: {
+                    email: 'No driver found with this email'
+                }
+            });
+        }
+
+        // ✅ 6. Password Verification
         const isMatch = await bcrypt.compare(password, driver.password);
-        if (!isMatch) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid password',
+                errors: {
+                    password: 'Incorrect password'
+                }
+            });
+        }
 
+        // ✅ 7. Generate Token
         const token = jwt.sign({ id: driver._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
+        // ✅ 8. Success Response
         res.status(200).json({
             success: true,
             message: 'Login successful',
@@ -98,7 +157,14 @@ export const loginDriver = async (req, res, next) => {
             }
         });
     } catch (err) {
-        next(err);
+        console.error('❌ Driver login error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error. Please try again later.',
+            errors: {
+                general: 'Something went wrong. Please try again.'
+            }
+        });
     }
 };
 
@@ -195,6 +261,29 @@ export const deleteDriver = async (req, res, next) => {
         
         const deleted = await Driver.findByIdAndDelete(driverId);
         res.status(200).json({ success: true, message: 'Driver deleted successfully' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Get shipments assigned to the logged-in driver
+export const getAssignedShipments = async (req, res, next) => {
+    try {
+        const driverId = req.user._id;
+        const allAssignedLoads = await Load.find({ assignedTo: driverId })
+            .populate('shipper', 'compName')
+            .populate('acceptedBid')
+            .sort({ pickupDate: 1 });
+
+        // Split into active and inactive
+        const activeShipments = allAssignedLoads.filter(load => load.status === 'Assigned' || load.status === 'In Transit');
+        const inactiveShipments = allAssignedLoads.filter(load => load.status === 'Delivered');
+
+        res.status(200).json({
+            success: true,
+            activeShipments,
+            inactiveShipments
+        });
     } catch (err) {
         next(err);
     }

@@ -29,9 +29,12 @@ export const createLoad = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'returnDate and returnLocation are required for DRAYAGE loads.' });
         }
 
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({ success: false, message: 'User not authenticated or shipper ID missing.' });
+        }
+
         const newLoad = new Load({
-            // shipper: req.user._id, // Commented for open access
-            shipper: req.user?._id || null, // or set to a dummy value if needed
+            shipper: req.user._id, // Always set shipper
             origin: {
                 city: fromCity,
                 state: fromState,

@@ -6,7 +6,8 @@ import {
     getDriverById, 
     updateDriver, 
     deleteDriver,
-    getDriversByTrucker 
+    getDriversByTrucker,
+    getAssignedShipments
 } from '../controllers/driverController.js';
 import { isAuthenticatedUser } from '../middlewares/auth.js';
 
@@ -18,6 +19,7 @@ driverRouter.post('/login', loginDriver);
 // Protected routes - Only truckers can access
 driverRouter.post('/register', isAuthenticatedUser, registerDriver);
 driverRouter.get('/my-drivers', isAuthenticatedUser, getDriversByTrucker); 
+driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
 driverRouter.get('/:id', isAuthenticatedUser, getDriverById);
 driverRouter.put('/:id', isAuthenticatedUser, updateDriver);
 driverRouter.delete('/:id', isAuthenticatedUser, deleteDriver);

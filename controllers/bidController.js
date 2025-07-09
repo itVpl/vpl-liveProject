@@ -136,17 +136,17 @@ export const getBidsForLoad = async (req, res, next) => {
 
         console.log('🔍 Debug - Load shipper ID:', load.shipper);
         console.log('🔍 Debug - Current user ID:', req.user._id);
-        console.log('🔍 Debug - IDs match:', load.shipper.toString() === req.user._id.toString());
+        console.log('🔍 Debug - IDs match:', load.shipper && req.user._id ? load.shipper.toString() === req.user._id.toString() : false);
 
         // Check if user is the shipper of this load
-        if (load.shipper.toString() !== req.user._id.toString()) {
-            console.log('❌ Authorization failed - Load belongs to different shipper');
+        if (!load.shipper || !req.user._id || load.shipper.toString() !== req.user._id.toString()) {
+            console.log('❌ Authorization failed - Load belongs to different shipper or shipper is null');
             return res.status(403).json({
                 success: false,
-                message: 'Not authorized to view bids for this load. This load belongs to a different shipper.',
+                message: 'Not authorized to view bids for this load. This load belongs to a different shipper or shipper is missing.',
                 debug: {
-                    loadShipperId: load.shipper.toString(),
-                    currentUserId: req.user._id.toString(),
+                    loadShipperId: load.shipper ? load.shipper.toString() : null,
+                    currentUserId: req.user._id ? req.user._id.toString() : null,
                     userType: req.user.userType
                 }
             });
@@ -190,7 +190,7 @@ export const updateBidStatus = async (req, res, next) => {
         }
 
         // Check if user is the shipper of this load
-        if (bid.load.shipper.toString() !== req.user._id.toString()) {
+        if (!bid.load.shipper || !req.user._id || bid.load.shipper.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 success: false,
                 message: 'Not authorized to update this bid'
