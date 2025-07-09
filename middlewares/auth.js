@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { User } from "../models/userModel.js";
 import { Employee } from "../models/inhouseUserModel.js";
 import ShipperDriver from "../models/shipper_driverModel.js";
+import Driver from "../models/driverModel.js";
 
 export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
     let token = req.cookies.token;
@@ -22,11 +23,14 @@ export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
     // If not found in User model, try ShipperDriver model
     if (!user) {
         user = await ShipperDriver.findById(decodedData.id);
-        
-        // 🔥 Check if ShipperDriver is approved
         if (user && user.status !== 'approved') {
             return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
         }
+    }
+
+    // If not found in ShipperDriver, try Driver model
+    if (!user) {
+        user = await Driver.findById(decodedData.id);
     }
     
     if (!user) {
