@@ -254,18 +254,78 @@ export const getEmployeesByDepartment = async (req, res) => {
 export const loginEmployee = async (req, res) => {
   try {
     const { empId, password } = req.body;
+
+    // ✅ 1. Required Field Validation
     if (!empId || !password) {
-      return res.status(400).json({ success: false, message: 'empId and password are required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Employee ID and password are required',
+        errors: {
+          empId: !empId ? 'Employee ID is required' : null,
+          password: !password ? 'Password is required' : null
+        }
+      });
     }
 
-    const employee = await Employee.findOne({ empId }).select('+password');
+    // ✅ 2. Employee ID Format Validation (alphanumeric)
+    const empIdRegex = /^[A-Za-z0-9]+$/;
+    if (!empIdRegex.test(empId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee ID should contain only letters and numbers',
+        errors: {
+          empId: 'Invalid Employee ID format'
+        }
+      });
+    }
+
+    // ✅ 3. Password Length Validation
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long',
+        errors: {
+          password: 'Password must be at least 6 characters'
+        }
+      });
+    }
+
+    // ✅ 4. Employee ID Trim and Uppercase
+    const cleanEmpId = empId.trim().toUpperCase();
+
+    // ✅ 5. Find Employee
+    const employee = await Employee.findOne({ empId: cleanEmpId }).select('+password');
     if (!employee) {
-      return res.status(404).json({ success: false, message: 'Employee not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found with this ID',
+        errors: {
+          empId: 'No employee found with this ID'
+        }
+      });
     }
 
+    // ✅ 6. Check Employee Status
+    if (employee.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: `Your account is ${employee.status}. Please contact HR.`,
+        errors: {
+          empId: `Account is ${employee.status}`
+        }
+      });
+    }
+
+    // ✅ 7. Password Verification
     const isMatch = await bcrypt.compare(password, employee.password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid password',
+        errors: {
+          password: 'Incorrect password'
+        }
+      });
     }
 
     const token = jwt.sign(
@@ -312,6 +372,8 @@ export const loginEmployee = async (req, res) => {
         employeeName: employee.employeeName,
         aliasName: employee.aliasName,
         role: employee.role,
+        department: employee.department,
+        designation: employee.designation,
         allowedModules: employee.allowedModules || []
       }
     });
