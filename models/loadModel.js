@@ -111,6 +111,11 @@ const loadSchema = new mongoose.Schema({
   proofOfDelivery: [{ type: String }], // URLs of images uploaded by driver
   // Delivery approval by shipper
   deliveryApproval: { type: Boolean, default: false },
+  carrier: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ShipperDriver',
+    default: null,
+  },
 });
 
 // Update the updatedAt field before saving

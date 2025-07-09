@@ -603,6 +603,12 @@ export const assignDriverAndVehicle = async (req, res, next) => {
         // Populate all required info
         const load = await Load.findById(bid.load._id).populate('shipper', 'compName');
         const trucker = await ShipperDriver.findById(bid.carrier);
+
+        // Assign the driver and carrier to the load
+        load.assignedTo = driver._id; // Driver ki ID
+        load.carrier = req.user._id;  // Trucker/Carrier ki ID
+        await load.save();
+
         let tracking = await Tracking.findOne({ load: load._id });
         if (!tracking) {
             // If not exists, create new

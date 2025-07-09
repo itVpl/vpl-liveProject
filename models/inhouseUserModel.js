@@ -51,7 +51,22 @@ const employeeSchema = new mongoose.Schema({
   allowedModules: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ModuleMaster'
-  }]
+  }],
+
+  // 📅 Leave Balance Tracking
+  leaveBalance: {
+    casual: { type: Number, default: 12 }, // 12 casual leaves per year
+    sick: { type: Number, default: 15 },   // 15 sick leaves per year
+    earned: { type: Number, default: 0 },  // Earned leaves (accrued)
+    total: { type: Number, default: 27 }   // Total available leaves
+  },
+  
+  // 📊 Leave Year Configuration
+  leaveYear: {
+    startDate: { type: Date, default: Date.now },
+    endDate: { type: Date },
+    isActive: { type: Boolean, default: true }
+  }
 
 }, { timestamps: true });
 
