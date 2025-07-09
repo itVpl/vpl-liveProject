@@ -545,7 +545,225 @@ const generateStatusUpdateEmail = (compName, userType, status, email, reason = '
   `;
 };
 
+// 🔥 New: Employee adds shipper/trucker
+const addShipperTruckerByEmployee = async (req, res) => {
+    try {
+        const employee = req.user; // From auth middleware
+        const {
+            userType, compName, mc_dot_no, carrierType, fleetsize,
+            compAdd, country, state, city, zipcode, phoneNo, email, password
+        } = req.body;
 
+        // ✅ Validation
+        if (!userType || !phoneNo || !email || !password) {
+            return res.status(400).json({ success: false, message: 'Required fields missing' });
+        }
+
+        if (!['shipper', 'trucker'].includes(userType)) {
+            return res.status(400).json({ success: false, message: 'Invalid userType. Must be shipper or trucker' });
+        }
+
+        // ✅ Check if employee has permission (admin or superadmin)
+        if (employee.role !== 'admin' && employee.role !== 'superadmin') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied. Only admins and superadmins can add shippers/truckers.' 
+            });
+        }
+
+        // ✅ Check for existing user
+        const existingUser = await ShipperDriver.findOne({ $or: [{ email }, { phoneNo }] });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'Email or Phone already registered' });
+        }
+
+        // ✅ Hash password and handle file upload
+        const hashedPassword = await hashPassword(password);
+        const docUploadPath = req.file ? normalizeShipperTruckerPath(req.file.path) : '';
+
+        // ✅ Create new shipper/trucker with employee reference
+        const newUser = new ShipperDriver({
+            userType,
+            compName,
+            mc_dot_no,
+            carrierType,
+            fleetsize,
+            compAdd,
+            country,
+            state,
+            city,
+            zipcode,
+            phoneNo,
+            email,
+            password: hashedPassword,
+            docUpload: docUploadPath,
+            // 🔥 Add employee reference
+            addedBy: {
+                empId: employee.empId,
+                employeeName: employee.employeeName,
+                department: employee.department
+            },
+            // Auto-approve if added by employee
+            status: 'approved',
+            statusUpdatedBy: employee.empId,
+            statusUpdatedAt: new Date()
+        });
+
+        await newUser.save();
+
+        console.log('✅ Shipper/Trucker added by employee:', {
+            employee: employee.empId,
+            company: compName,
+            userType: userType
+        });
+
+        // 🔥 Send approval email (since auto-approved)
+        try {
+            const emailSubject = `🎉 Account Approved - ${compName}`;
+            const emailMessage = generateStatusUpdateEmail(
+                compName, 
+                userType, 
+                'approved', 
+                email, 
+                'Account approved by ' + employee.employeeName + ' (' + employee.department + ')'
+            );
+
+            await sendEmail({
+                to: email,
+                subject: emailSubject,
+                html: emailMessage,
+            });
+
+            console.log('📧 Approval email sent to:', email);
+        } catch (emailError) {
+            console.error('❌ Email sending failed:', emailError);
+            // Don't fail the operation if email fails
+        }
+
+        res.status(201).json({
+            success: true,
+            message: `${userType} added successfully and auto-approved`,
+            userId: newUser.userId,
+            addedBy: {
+                empId: employee.empId,
+                employeeName: employee.employeeName,
+                department: employee.department
+            },
+            filePath: docUploadPath
+        });
+
+    } catch (error) {
+        console.error('❌ Add shipper/trucker error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
+// 🔥 Get shippers/truckers added by specific employee
+const getShipperTruckersByEmployee = async (req, res) => {
+    try {
+        const employee = req.user;
+        const { empId } = req.params;
+
+        // ✅ Check if employee has permission
+        if (employee.role !== 'admin' && employee.role !== 'superadmin') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied. Only admins and superadmins can view this data.' 
+            });
+        }
+
+        // ✅ If not superadmin, can only view their own additions
+        if (employee.role === 'admin' && empId !== employee.empId) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied. You can only view your own additions.' 
+            });
+        }
+
+        const users = await ShipperDriver.find({ 
+            'addedBy.empId': empId 
+        }).select('-password').sort({ createdAt: -1 });
+
+        const shippers = users.filter(user => user.userType === 'shipper');
+        const truckers = users.filter(user => user.userType === 'trucker');
+
+        res.status(200).json({
+            success: true,
+            employee: {
+                empId: empId,
+                employeeName: employee.role === 'admin' ? employee.employeeName : 'Unknown',
+                department: employee.role === 'admin' ? employee.department : 'Unknown'
+            },
+            totalAdded: users.length,
+            shippers: {
+                count: shippers.length,
+                data: shippers
+            },
+            truckers: {
+                count: truckers.length,
+                data: truckers
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Get shipper/truckers by employee error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
+// 🔥 Get all shippers/truckers with employee reference info
+const getAllUsersWithEmployeeInfo = async (req, res) => {
+    try {
+        const employee = req.user;
+
+        // ✅ Check if employee has permission
+        if (employee.role !== 'admin' && employee.role !== 'superadmin') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied. Only admins and superadmins can view this data.' 
+            });
+        }
+
+        const users = await ShipperDriver.find().select('-password').sort({ createdAt: -1 });
+
+        // ✅ Group by added by employee
+        const groupedByEmployee = {};
+        const withoutEmployee = [];
+
+        users.forEach(user => {
+            if (user.addedBy && user.addedBy.empId) {
+                if (!groupedByEmployee[user.addedBy.empId]) {
+                    groupedByEmployee[user.addedBy.empId] = {
+                        employee: {
+                            empId: user.addedBy.empId,
+                            employeeName: user.addedBy.employeeName,
+                            department: user.addedBy.department
+                        },
+                        users: []
+                    };
+                }
+                groupedByEmployee[user.addedBy.empId].users.push(user);
+            } else {
+                withoutEmployee.push(user);
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            totalUsers: users.length,
+            addedByEmployees: Object.values(groupedByEmployee),
+            publicRegistrations: withoutEmployee,
+            summary: {
+                totalAddedByEmployees: Object.keys(groupedByEmployee).length,
+                totalPublicRegistrations: withoutEmployee.length
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Get all users with employee info error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
 
 export {
     registerUser,
@@ -555,4 +773,7 @@ export {
     getAllTruckers,
     updateUserStatus,
     simpleStatusUpdate,
+    addShipperTruckerByEmployee,
+    getShipperTruckersByEmployee,
+    getAllUsersWithEmployeeInfo,
 };

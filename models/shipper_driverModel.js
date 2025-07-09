@@ -29,6 +29,21 @@ const shipperDriverSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // 🔥 New: Reference to employee who added this shipper/trucker
+  addedBy: {
+    empId: {
+      type: String,
+      required: false // Optional for public registrations
+    },
+    employeeName: {
+      type: String,
+      required: false
+    },
+    department: {
+      type: String,
+      required: false
+    }
+  },
   compName: String,
   mc_dot_no: String,
   carrierType: String,
