@@ -7,8 +7,8 @@ import {
     updateDriver, 
     deleteDriver,
     getDriversByTrucker,
-    getAssignedShipments,
-    markArrivalAndUpload
+    getAssignedShipments
+    // markArrivalAndUpload
 } from '../controllers/driverController.js';
 import { isAuthenticatedUser } from '../middlewares/auth.js';
 import upload from '../middlewares/upload.js';
@@ -22,7 +22,7 @@ driverRouter.post('/login', loginDriver);
 driverRouter.post('/register', isAuthenticatedUser, registerDriver);
 driverRouter.get('/my-drivers', isAuthenticatedUser, getDriversByTrucker); 
 driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
-driverRouter.post('/mark-arrival/:loadId', isAuthenticatedUser, upload.array('images'), markArrivalAndUpload);
+// driverRouter.post('/mark-arrival/:loadId', isAuthenticatedUser, upload.array('images'), markArrivalAndUpload);
 driverRouter.get('/:id', isAuthenticatedUser, getDriverById);
 driverRouter.put('/:id', isAuthenticatedUser, updateDriver);
 driverRouter.delete('/:id', isAuthenticatedUser, deleteDriver);

@@ -2,6 +2,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import pkg from 'cloudinary';
+const { v2: cloudinary } = pkg;
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 // Fix __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -18,18 +21,26 @@ if (!fs.existsSync(shipperTruckerBasePath)) {
   fs.mkdirSync(shipperTruckerBasePath, { recursive: true });
 }
 
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const cloudinaryStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'vpl_uploads', // You can change this folder name
+    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+  },
+});
+
+const upload = multer({ storage: cloudinaryStorage });
+
+// Local storage for employee data
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Try to get empId from multiple places
-    let empId =
-      req.body.empId ||
-      (req.query && req.query.empId) ||
-      (req.headers && req.headers.empid) ||
-      (req.params && (req.params.empId || req.params.id));
-    if (!empId) {
-      // fallback: use 'unknown' + timestamp
-      empId = 'unknown_' + Date.now();
-    }
+    const empId = req.body.empId || 'unknown_' + Date.now();
     const empFolder = path.join(baseUploadPath, empId);
     if (!fs.existsSync(empFolder)) {
       fs.mkdirSync(empFolder, { recursive: true });
@@ -38,26 +49,16 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
-    // Use fieldname for clarity (e.g. pancard, aadharcard, educationalDocs)
     const filename = `${file.fieldname}_${Date.now()}${ext}`;
     cb(null, filename);
   },
 });
 
-// 🔥 New: Shipper/Trucker storage
+// Local storage for shipper/trucker data
 const shipperTruckerStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Get company name or email for folder name
-    let folderName = req.body.compName || req.body.email || 'unknown';
-    
-    // Clean folder name (remove special characters)
-    folderName = folderName.replace(/[^a-zA-Z0-9]/g, '_');
-    
-    // Add userType to folder name
-    const userType = req.body.userType || 'unknown';
-    const finalFolderName = `${userType}_${folderName}`;
-    
-    const companyFolder = path.join(shipperTruckerBasePath, finalFolderName);
+    const companyName = req.body.compName || 'unknown_' + Date.now();
+    const companyFolder = path.join(shipperTruckerBasePath, companyName.replace(/[^a-zA-Z0-9]/g, '_'));
     if (!fs.existsSync(companyFolder)) {
       fs.mkdirSync(companyFolder, { recursive: true });
     }
@@ -65,8 +66,7 @@ const shipperTruckerStorage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
-    const timestamp = Date.now();
-    const filename = `${file.fieldname}_${timestamp}${ext}`;
+    const filename = `${file.fieldname}_${Date.now()}${ext}`;
     cb(null, filename);
   },
 });
@@ -131,4 +131,4 @@ const proofOfDeliveryUpload = multer({ storage: proofOfDeliveryStorage, fileFilt
 
 export { normalizePath, normalizeShipperTruckerPath };
 export { shipperTruckerUpload, proofOfDeliveryUpload };
-export default employeeUpload;
+export default upload;

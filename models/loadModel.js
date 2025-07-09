@@ -116,6 +116,13 @@ const loadSchema = new mongoose.Schema({
     ref: 'ShipperDriver',
     default: null,
   },
+  originPlace: {
+    status: { type: Number, default: 0 }, // 0 = not reached, 1 = reached
+  },
+  emptyTruckImages: [{ type: String }],
+  loadedTruckImages: [{ type: String }],
+  podImages: [{ type: String }],
+  teirTickets: [{ type: String }],
 });
 
 // Update the updatedAt field before saving

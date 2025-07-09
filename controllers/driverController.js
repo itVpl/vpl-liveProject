@@ -3,6 +3,7 @@ import ShipperDriver from "../models/shipper_driverModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Load } from "../models/loadModel.js";
+import multer from "multer";
 
 // export const registerDriver = async (req, res, next) => {
 //     try {
@@ -284,6 +285,41 @@ export const getAssignedShipments = async (req, res, next) => {
             activeShipments,
             inactiveShipments
         });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ✅ Mark arrival at origin and upload images
+export const markArrivalAndUpload = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+        const { type } = req.body; // 'empty', 'loaded', 'pod', 'teir'
+        const files = req.files || [];
+
+        const load = await Load.findById(loadId);
+        if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
+
+        // Only assigned driver can mark
+        if (!load.assignedTo || load.assignedTo.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        // Mark originPlace as reached
+        if (!load.originPlace) load.originPlace = {};
+        load.originPlace.status = 1;
+
+        // Save images as per type
+        if (load.loadType === 'OTR') {
+            if (type === 'empty') load.emptyTruckImages.push(...files.map(f => f.path));
+            if (type === 'loaded') load.loadedTruckImages.push(...files.map(f => f.path));
+            if (type === 'pod') load.podImages.push(...files.map(f => f.path));
+        } else if (load.loadType === 'DRAYAGE' && type === 'teir') {
+            load.teirTickets.push(...files.map(f => f.path));
+        }
+
+        await load.save();
+        res.status(200).json({ success: true, message: 'Arrival marked and images uploaded', load });
     } catch (err) {
         next(err);
     }

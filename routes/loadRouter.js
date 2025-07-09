@@ -32,12 +32,12 @@ loadRouter.get('/stats', getLoadStats); // Public stats route
 loadRouter.get('/test-auth', isAuthenticatedUser, testUserAuth);
 loadRouter.get('/test-model', testLoadModel); // Public test
 
-// loadRouter.post('/create', isShipper, createLoad); 
-// loadRouter.get('/shipper', isShipper, getShipperLoads); 
+loadRouter.post('/create', isShipper, createLoad); 
+loadRouter.get('/shipper', isShipper, getShipperLoads); 
 
 
-loadRouter.post('/create', createLoad); 
-loadRouter.get('/shipper',  getShipperLoads);
+// loadRouter.post('/create', createLoad); 
+// loadRouter.get('/shipper',  getShipperLoads);
 loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads); 
 
 // Get all shipments from Tracking table
