@@ -141,10 +141,13 @@ export const loginDriver = async (req, res, next) => {
         }
 
         // ✅ 7. Generate Token
-        console.log('🔍 Debug - Driver ID for JWT:', driver._id);
         const token = jwt.sign({ id: driver._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-        // ✅ 8. Success Response
+        // ✅ 8. Set isLoggedIn = true
+        driver.isLoggedIn = true;
+        await driver.save();
+
+        // ✅ 9. Success Response
         res.status(200).json({
             success: true,
             message: 'Login successful',
