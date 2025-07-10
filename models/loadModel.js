@@ -118,6 +118,15 @@ const loadSchema = new mongoose.Schema({
   },
   originPlace: {
     status: { type: Number, default: 0 }, // 0 = not reached, 1 = reached
+    arrivedAt: { type: Date },
+    notes: { type: String, default: '' },
+    location: { type: String, default: '' }
+  },
+  destinationPlace: {
+    status: { type: Number, default: 0 }, // 0 = not reached, 1 = reached
+    arrivedAt: { type: Date },
+    notes: { type: String, default: '' },
+    location: { type: String, default: '' }
   },
   emptyTruckImages: [{ type: String }],
   loadedTruckImages: [{ type: String }],
