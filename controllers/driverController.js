@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Load } from "../models/loadModel.js";
 import multer from "multer";
+import LoadImage from '../models/loadImageModel.js';
 
 // export const registerDriver = async (req, res, next) => {
 //     try {
@@ -58,14 +59,14 @@ export const registerDriver = async (req, res, next) => {
         });
 
         await driver.save();
-        
+
         // Populate trucker info for response
         const driverWithTrucker = await Driver.findById(driver._id).populate('truckerId', 'compName mc_dot_no');
-        
-        res.status(201).json({ 
-            success: true, 
-            message: 'Driver registered successfully', 
-            driver: driverWithTrucker 
+
+        res.status(201).json({
+            success: true,
+            message: 'Driver registered successfully',
+            driver: driverWithTrucker
         });
     } catch (err) {
         next(err);
@@ -186,7 +187,7 @@ export const getAllDrivers = async (req, res, next) => {
 export const getDriversByTrucker = async (req, res, next) => {
     try {
         const trucker = req.user;
-        
+
         if (!trucker || trucker.userType !== 'trucker') {
             return res.status(403).json({ success: false, message: 'Only truckers can view their drivers' });
         }
@@ -194,12 +195,12 @@ export const getDriversByTrucker = async (req, res, next) => {
         const drivers = await Driver.find({ truckerId: trucker._id })
             .select('-password')
             .sort({ createdAt: -1 });
-            
-        res.status(200).json({ 
-            success: true, 
+
+        res.status(200).json({
+            success: true,
             truckerCompany: trucker.compName,
             totalDrivers: drivers.length,
-            drivers 
+            drivers
         });
     } catch (err) {
         next(err);
@@ -211,9 +212,9 @@ export const getDriverById = async (req, res, next) => {
     try {
         const driver = await Driver.findById(req.params.id)
             .populate('truckerId', 'compName mc_dot_no userType');
-            
+
         if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
-        
+
         res.status(200).json({ success: true, driver });
     } catch (err) {
         next(err);
@@ -225,20 +226,20 @@ export const updateDriver = async (req, res, next) => {
     try {
         const trucker = req.user;
         const driverId = req.params.id;
-        
+
         // Check if driver belongs to this trucker
         const driver = await Driver.findById(driverId);
         if (!driver) {
             return res.status(404).json({ success: false, message: 'Driver not found' });
         }
-        
+
         if (driver.truckerId.toString() !== trucker._id.toString()) {
             return res.status(403).json({ success: false, message: 'You can only update your own drivers' });
         }
-        
+
         const updated = await Driver.findByIdAndUpdate(driverId, req.body, { new: true })
             .populate('truckerId', 'compName mc_dot_no');
-            
+
         res.status(200).json({ success: true, driver: updated });
     } catch (err) {
         next(err);
@@ -250,17 +251,17 @@ export const deleteDriver = async (req, res, next) => {
     try {
         const trucker = req.user;
         const driverId = req.params.id;
-        
+
         // Check if driver belongs to this trucker
         const driver = await Driver.findById(driverId);
         if (!driver) {
             return res.status(404).json({ success: false, message: 'Driver not found' });
         }
-        
+
         if (driver.truckerId.toString() !== trucker._id.toString()) {
             return res.status(403).json({ success: false, message: 'You can only delete your own drivers' });
         }
-        
+
         const deleted = await Driver.findByIdAndDelete(driverId);
         res.status(200).json({ success: true, message: 'Driver deleted successfully' });
     } catch (err) {
@@ -291,90 +292,111 @@ export const getAssignedShipments = async (req, res, next) => {
     }
 };
 
-// ✅ Mark arrival at origin and upload images
 export const markArrivalAndUpload = async (req, res, next) => {
     try {
-        const { loadId } = req.params;
-        const { type, location, notes, arrivalType } = req.body; // 'empty', 'loaded', 'pod', 'teir', 'origin', 'destination'
-        const files = req.files || [];
-
-        const load = await Load.findById(loadId);
-        if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
-
-        // Only assigned driver can mark
-        if (!load.assignedTo || load.assignedTo.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ success: false, message: 'Not authorized' });
-        }
-
-        // Validate arrival type
-        if (!arrivalType || !['origin', 'destination'].includes(arrivalType)) {
-            return res.status(400).json({ success: false, message: 'Arrival type must be origin or destination' });
-        }
-
-        // Mark arrival based on type
-        if (arrivalType === 'origin') {
-            if (!load.originPlace) load.originPlace = {};
-            load.originPlace.status = 1;
-            load.originPlace.arrivedAt = new Date();
-            load.originPlace.notes = notes || '';
-            load.originPlace.location = location || '';
-            
-            // Update load status to 'In Transit' when arriving at origin
-            if (load.status === 'Assigned') {
-                load.status = 'In Transit';
-            }
-        } else if (arrivalType === 'destination') {
-            if (!load.destinationPlace) load.destinationPlace = {};
-            load.destinationPlace.status = 1;
-            load.destinationPlace.arrivedAt = new Date();
-            load.destinationPlace.notes = notes || '';
-            load.destinationPlace.location = location || '';
-            
-            // Update load status to 'Delivered' when arriving at destination
-            load.status = 'Delivered';
-        }
-
-        // Save images as per type
-        if (load.loadType === 'OTR') {
-            if (type === 'empty') load.emptyTruckImages.push(...files.map(f => f.path));
-            if (type === 'loaded') load.loadedTruckImages.push(...files.map(f => f.path));
-            if (type === 'pod') load.podImages.push(...files.map(f => f.path));
-        } else if (load.loadType === 'DRAYAGE' && type === 'teir') {
-            load.teirTickets.push(...files.map(f => f.path));
-        }
-
-        // Update tracking status
-        const Tracking = (await import('../models/Tracking.js')).default;
-        const tracking = await Tracking.findOne({ load: load._id });
-        if (tracking) {
-            if (arrivalType === 'origin') {
-                tracking.status = 'in_transit';
-            } else if (arrivalType === 'destination') {
-                tracking.status = 'delivered';
-                tracking.endedAt = new Date();
-            }
-            await tracking.save();
-        }
-
-        await load.save();
-        
-        res.status(200).json({ 
-            success: true, 
-            message: `Arrival marked at ${arrivalType} and images uploaded`, 
-            load,
-            arrivalType,
-            timestamp: new Date()
+      const { loadId, driverId } = req.params;
+      const files = req.files || [];
+  
+      // ✅ Verify driver exists
+      const driver = await Driver.findById(driverId);
+      if (!driver) {
+        return res.status(404).json({ success: false, message: "Driver not found" });
+      }
+  
+      // ✅ Find load
+      const load = await Load.findById(loadId);
+      if (!load) {
+        return res.status(404).json({ success: false, message: "Load not found" });
+      }
+  
+      // ✅ Only assigned driver can upload
+      if (!load.assignedTo || load.assignedTo.toString() !== driverId) {
+        return res.status(403).json({ success: false, message: "Not authorized to upload for this load" });
+      }
+  
+      // ✅ Categorize uploaded files
+      const emptyTruck = [], loadedTruck = [], pod = [], eir = [], seal = [];
+      for (const field in files) {
+        files[field].forEach(file => {
+          if (field === 'vehicleEmptyImg') emptyTruck.push(file.path);
+          if (field === 'vehicleLoadedImg') loadedTruck.push(file.path);
+          if (field === 'POD') pod.push(file.path);
+          if (field === 'EIRticketImg') eir.push(file.path);
+          if (field === 'Seal') seal.push(file.path);
         });
+      }
+  
+      // ✅ Validate required images
+      const errors = [];
+      if (load.loadType === 'OTR') {
+        if (!emptyTruck.length) errors.push('vehicleEmptyImg is required');
+        if (!loadedTruck.length) errors.push('vehicleLoadedImg is required');
+        if (!pod.length) errors.push('POD is required');
+      } else if (load.loadType === 'DRAYAGE') {
+        if (!emptyTruck.length) errors.push('vehicleEmptyImg is required');
+        if (!loadedTruck.length) errors.push('vehicleLoadedImg is required');
+        if (!pod.length) errors.push('POD is required');
+        if (!eir.length) errors.push('EIRticketImg is required');
+        if (!seal.length) errors.push('Seal image is required');
+      }
+  
+      if (errors.length) {
+        return res.status(400).json({ success: false, message: "Missing required images", errors });
+      }
+  
+      // ❌ Check if already uploaded
+      const alreadyExists = await LoadImage.findOne({ loadId, driverId });
+      if (alreadyExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Images already uploaded for this load by this driver"
+        });
+      }
+  
+      // ✅ Save images
+      await LoadImage.create({
+        loadId,
+        driverId,
+        vehicleEmptyImg: emptyTruck,
+        vehicleLoadedImg: loadedTruck,
+        POD: pod,
+        EIRticketImg: eir,
+        Seal: seal
+      });
+  
+      // ✅ Mark origin arrival
+      load.originPlace = {
+        status: 1,
+        arrivedAt: new Date(),
+        location: "",
+        notes: ""
+      };
+      await load.save();
+  
+      res.status(200).json({
+        success: true,
+        message: "Arrival marked and images uploaded successfully",
+        uploadedImages: {
+          vehicleEmptyImg: emptyTruck.length,
+          vehicleLoadedImg: loadedTruck.length,
+          POD: pod.length,
+          EIRticketImg: eir.length,
+          Seal: seal.length
+        }
+      });
+  
     } catch (err) {
-        next(err);
+      console.error("❌ Arrival Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
-};
+  };
+
 
 // ✅ Get arrival history for a specific load
 export const getArrivalHistory = async (req, res, next) => {
     try {
         const { loadId } = req.params;
-        
+
         const load = await Load.findById(loadId);
         if (!load) return res.status(404).json({ success: false, message: 'Load not found' });
 
@@ -396,10 +418,10 @@ export const getArrivalHistory = async (req, res, next) => {
             loadType: load.loadType
         };
 
-        res.status(200).json({ 
-            success: true, 
+        res.status(200).json({
+            success: true,
             arrivalHistory,
-            loadId 
+            loadId
         });
     } catch (err) {
         next(err);
@@ -433,11 +455,11 @@ export const updateArrivalStatus = async (req, res, next) => {
         }
 
         await load.save();
-        
-        res.status(200).json({ 
-            success: true, 
+
+        res.status(200).json({
+            success: true,
             message: `${arrivalType} arrival status updated`,
-            load 
+            load
         });
     } catch (err) {
         next(err);
@@ -448,7 +470,7 @@ export const updateArrivalStatus = async (req, res, next) => {
 export const getAllArrivalRecords = async (req, res, next) => {
     try {
         const driverId = req.user._id;
-        
+
         const loads = await Load.find({ assignedTo: driverId })
             .select('originPlace destinationPlace status loadType shipmentNumber origin destination createdAt')
             .populate('shipper', 'compName')
@@ -471,10 +493,10 @@ export const getAllArrivalRecords = async (req, res, next) => {
             createdAt: load.createdAt
         }));
 
-        res.status(200).json({ 
-            success: true, 
+        res.status(200).json({
+            success: true,
             totalRecords: arrivalRecords.length,
-            arrivalRecords 
+            arrivalRecords
         });
     } catch (err) {
         next(err);
@@ -501,23 +523,101 @@ export const getMyProfile = async (req, res, next) => {
 export const getDriverDetailsById = async (req, res, next) => {
     try {
         const { driverId } = req.params;
-        
+
         const driver = await Driver.findById(driverId)
             .populate('truckerId', 'compName mc_dot_no')
             .select('-password');
-            
+
         if (!driver) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Driver not found with this ID' 
+            return res.status(404).json({
+                success: false,
+                message: 'Driver not found with this ID'
             });
         }
-        
-        res.status(200).json({ 
-            success: true, 
-            driver 
+
+        res.status(200).json({
+            success: true,
+            driver
         });
     } catch (err) {
         next(err);
+    }
+};
+
+// ✅ Driver Logout
+export const logoutDriver = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: 'You are already logged out'
+            });
+        }
+
+        const driverId = req.user._id;
+        const driverName = req.user.fullName;
+        const driver = await Driver.findById(driverId);
+        if (!driver) {
+            return res.status(404).json({ success: false, message: 'Driver not found' });
+        }
+        if (driver.isLoggedIn === false) {
+            return res.status(400).json({ success: false, message: 'Already logged out' });
+        }
+        driver.isLoggedIn = false;
+        await driver.save();
+        // Clear the token cookie
+        res.cookie('token', null, {
+            expires: new Date(Date.now()),
+            httpOnly: true,
+            sameSite: 'strict'
+        });
+        res.status(200).json({
+            success: true,
+            message: `Logout successful for driver ${driverName}`,
+            driverId: driverId
+        });
+    } catch (err) {
+        console.error('❌ Driver logout error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error during logout',
+            error: err.message
+        });
+    }
+};
+
+// ✅ Logout by driverId (for debug/testing only)
+export const logoutDriverById = async (req, res) => {
+    try {
+        const { driverId } = req.body;
+        if (!driverId) {
+            return res.status(400).json({
+                success: false,
+                message: 'driverId is required'
+            });
+        }
+        const driver = await Driver.findById(driverId);
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: 'Driver not found with this id'
+            });
+        }
+        if (driver.isLoggedIn === false) {
+            return res.status(400).json({ success: false, message: 'Already logged out' });
+        }
+        driver.isLoggedIn = false;
+        await driver.save();
+        return res.status(200).json({
+            success: true,
+            message: `Logout successful for driver ${driver.fullName}`,
+            driverId: driver._id
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error during logout by id',
+            error: err.message
+        });
     }
 };
