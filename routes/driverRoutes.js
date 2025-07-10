@@ -58,8 +58,7 @@ import {
 } from '../controllers/driverController.js';
 
 import {
-  isAuthenticatedUser,
-  isAuthenticatedDriver  // ✅ import added
+  isAuthenticatedUser
 } from '../middlewares/auth.js';
 
 // Remove upload and arrivalUpload imports for now
@@ -88,15 +87,15 @@ driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
 driverRouter.post('/mark-arrival/:loadId/:driverId', markArrivalAndUpload);
 
 // ✅ Driver CRUD (driver-only)
-driverRouter.get('/:id', isAuthenticatedDriver, getDriverById);
-driverRouter.put('/:id', isAuthenticatedDriver, updateDriver);
-driverRouter.delete('/:id', isAuthenticatedDriver, deleteDriver);
+driverRouter.get('/:id', isAuthenticatedUser, getDriverById);
+driverRouter.put('/:id', isAuthenticatedUser, updateDriver);
+driverRouter.delete('/:id', isAuthenticatedUser, deleteDriver);
 
 // ✅ Driver profile
-driverRouter.get('/me', isAuthenticatedDriver, getMyProfile);
+driverRouter.get('/me', getMyProfile);
 
 // ✅ Driver logout
-driverRouter.post('/logout', isAuthenticatedDriver, logoutDriver);
+driverRouter.post('/logout', logoutDriver);
 
 // ✅ Logout by driverId (for debug/testing only)
 driverRouter.post('/logout-by-id', logoutDriverById);
