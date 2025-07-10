@@ -62,7 +62,8 @@ import {
   isAuthenticatedDriver  // ✅ import added
 } from '../middlewares/auth.js';
 
-import upload, { arrivalUpload } from '../middlewares/upload.js';
+// Remove upload and arrivalUpload imports for now
+// import upload, { arrivalUpload } from '../middlewares/upload.js';
 
 const driverRouter = express.Router();
 
@@ -83,11 +84,8 @@ driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
 //   markArrivalAndUpload
 // );
 
-driverRouter.post(
-    '/mark-arrival/:loadId/:driverId',
-    arrivalUpload, // 👈 multer middleware to accept file uploads
-    markArrivalAndUpload
-  );
+// If you want to keep the route but without file upload, use:
+driverRouter.post('/mark-arrival/:loadId/:driverId', markArrivalAndUpload);
 
 // ✅ Driver CRUD (driver-only)
 driverRouter.get('/:id', isAuthenticatedDriver, getDriverById);
