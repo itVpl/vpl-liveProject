@@ -1,5 +1,5 @@
 import express from 'express';
-import employeeUpload from '../middlewares/upload.js';
+import { employeeUpload } from '../middlewares/upload.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import {
   createEmployee,
@@ -22,7 +22,7 @@ import {
   getMeetingsByEmpId,
   unassignModulesFromMaster
 } from '../controllers/inhouseUserController.js';
-import { isHRDepartment } from '../middlewares/isHRDepartment.js';
+import { isHRDepartment } from '../docs/isHRDepartment.js';
 
 const router = express.Router();
 
