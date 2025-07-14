@@ -130,15 +130,29 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/v1/load', loadRouter);
 
 // Rate Limiter Middleware
-const limiter = rateLimit({
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Increased limit for more requests per IP
+  max: 2000, // Increased global limit for more requests per IP
   message: {
     status: 429,
     error: 'Too many requests, please try again after 15 minutes.'
   }
 });
-app.use(limiter); // Apply to all routes
+app.use(globalLimiter); // Apply to all routes
+
+// Stricter limiter for login and register
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15, // Only 15 requests per 15 min per IP
+  message: {
+    status: 429,
+    error: 'Too many login/register attempts, please try again after 15 minutes.'
+  }
+});
+
+// Place these before userRouter
+app.use('/api/v1/user/login', authLimiter);
+app.use('/api/v1/user/register', authLimiter);
 
 // Friendly root route
 app.get('/', (req, res) => {
