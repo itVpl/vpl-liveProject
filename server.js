@@ -26,7 +26,7 @@ const io = new Server(server, {
 
 
 
-const onlineUsers = new Map();
+export const onlineUsers = new Map();
 
 io.on('connection', (socket) => {
   socket.on('join', (empId) => {
