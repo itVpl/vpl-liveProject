@@ -15,7 +15,8 @@ import {
     approveDelivery,
     createTrackingForLoad,
     getAllTrackings,
-    getTrackingByShipmentNumber
+    getTrackingByShipmentNumber,
+    updateLoadsWithGeocoding
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper } from '../middlewares/auth.js';
 import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid } from '../controllers/bidController.js';
@@ -35,6 +36,8 @@ loadRouter.get('/test-model', testLoadModel); // Public test
 loadRouter.post('/create', isShipper, createLoad); 
 loadRouter.get('/shipper', isShipper, getShipperLoads); 
 
+// Update existing loads with geocoding (admin/dev use)
+loadRouter.post('/update-geocoding', updateLoadsWithGeocoding);
 
 // loadRouter.post('/create', createLoad); 
 // loadRouter.get('/shipper',  getShipperLoads);

@@ -22,7 +22,7 @@ const registerUser = async (req, res) => {
         }
 
         const hashedPassword = await hashPassword(password);
-        const docUploadPath = req.file ? normalizeShipperTruckerPath(req.file.path) : '';
+        const docUploadPath = req.file ? (req.file.location || req.file.path) : '';
 
         const newUser = new ShipperDriver({
             userType,
@@ -43,7 +43,7 @@ const registerUser = async (req, res) => {
 
         await newUser.save();
 
-        console.log('📁 File uploaded to:', docUploadPath);
+        console.log('📁 File uploaded to S3:', docUploadPath);
         console.log('🏢 Company folder created for:', compName);
 
         // 🔥 Send registration confirmation email
@@ -551,7 +551,8 @@ const addShipperTruckerByEmployee = async (req, res) => {
         const employee = req.user; // From auth middleware
         const {
             userType, compName, mc_dot_no, carrierType, fleetsize,
-            compAdd, country, state, city, zipcode, phoneNo, email, password
+            compAdd, country, state, city, zipcode, phoneNo, email, password,
+            agentIds // Accept agentIds from request body
         } = req.body;
 
         // ✅ Validation
@@ -603,6 +604,8 @@ const addShipperTruckerByEmployee = async (req, res) => {
                 employeeName: employee.employeeName,
                 department: employee.department
             },
+            // 🔥 Save agentIds (array of empId)
+            agentIds: Array.isArray(agentIds) ? agentIds : [],
             // Auto-approve if added by employee
             status: 'approved',
             statusUpdatedBy: employee.empId,

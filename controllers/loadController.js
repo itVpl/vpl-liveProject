@@ -519,22 +519,8 @@ export const uploadProofOfDelivery = async (req, res, next) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ success: false, message: 'No files uploaded' });
     }
-    // Move files to shipment number folder if available
-    const fs = (await import('fs')).default;
-    const path = (await import('path')).default;
-    const __dirname = path.dirname(new URL(import.meta.url).pathname);
-    const proofOfDeliveryBasePath = path.join(__dirname, '../uploads/proofOfDelivery');
-    const shipmentFolder = path.join(proofOfDeliveryBasePath, load.shipmentNumber || load._id.toString());
-    if (!fs.existsSync(shipmentFolder)) {
-      fs.mkdirSync(shipmentFolder, { recursive: true });
-    }
-    // Move uploaded files to shipment folder
-    const fileUrls = [];
-    for (const file of req.files) {
-      const destPath = path.join(shipmentFolder, path.basename(file.path));
-      fs.renameSync(file.path, destPath);
-      fileUrls.push('/uploads/proofOfDelivery/' + (load.shipmentNumber || load._id.toString()) + '/' + path.basename(file.path));
-    }
+    // Get URLs from uploaded files (S3 or local)
+    const fileUrls = req.files.map(file => file.location || file.path);
     load.proofOfDelivery = fileUrls;
     load.status = 'POD_uploaded';
     await load.save();
@@ -635,6 +621,73 @@ export const getAllTrackings = async (req, res, next) => {
   }
 };
 
+// Update existing loads with geocoding (admin/dev use)
+export const updateLoadsWithGeocoding = async (req, res, next) => {
+  try {
+    const { getLatLngFromAddress } = await import('../utils/geocode.js');
+    
+    // Get all loads that don't have geocoded coordinates
+    const loads = await Load.find({
+      $or: [
+        { 'origin.lat': { $exists: false } },
+        { 'origin.lon': { $exists: false } },
+        { 'destination.lat': { $exists: false } },
+        { 'destination.lon': { $exists: false } }
+      ]
+    });
+
+    console.log(`🔍 Found ${loads.length} loads to update with geocoding`);
+
+    let updatedCount = 0;
+    let errorCount = 0;
+
+    for (const load of loads) {
+      try {
+        // Prepare full address strings
+        const originAddress = `${load.origin.city}, ${load.origin.state}`.trim();
+        const destinationAddress = `${load.destination.city}, ${load.destination.state}`.trim();
+
+        // Geocode origin and destination
+        const originLatLng = await getLatLngFromAddress(originAddress);
+        const destinationLatLng = await getLatLngFromAddress(destinationAddress);
+
+        if (originLatLng && destinationLatLng) {
+          // Update load with geocoded coordinates
+          await Load.findByIdAndUpdate(load._id, {
+            'origin.lat': originLatLng.lat,
+            'origin.lon': originLatLng.lon,
+            'destination.lat': destinationLatLng.lat,
+            'destination.lon': destinationLatLng.lon
+          });
+          updatedCount++;
+          console.log(`✅ Updated load ${load._id} with geocoding`);
+        } else {
+          console.log(`❌ Geocoding failed for load ${load._id}`);
+          errorCount++;
+        }
+
+        // Add a small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`❌ Error updating load ${load._id}:`, error.message);
+        errorCount++;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Geocoding update completed',
+      data: {
+        totalLoads: loads.length,
+        updatedCount,
+        errorCount
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in updateLoadsWithGeocoding:', error);
+    next(error);
+  }
+};
 
 export const getTrackingByShipmentNumber = async (req, res, next) => {
     try {

@@ -53,15 +53,15 @@ export const createEmployee = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Handle file uploads for identityDocs
-    const pancardPath = req.files && req.files.pancard ? normalizePath(req.files.pancard[0].path) : undefined;
-    const aadharcardPath = req.files && req.files.aadharcard ? normalizePath(req.files.aadharcard[0].path) : undefined;
-    const educationalDocsPaths = req.files && req.files.educationalDocs ? req.files.educationalDocs.map(f => normalizePath(f.path)) : [];
+    const pancardPath = req.files && req.files.pancard ? (req.files.pancard[0].location || req.files.pancard[0].path) : undefined;
+    const aadharcardPath = req.files && req.files.aadharcard ? (req.files.aadharcard[0].location || req.files.aadharcard[0].path) : undefined;
+    const educationalDocsPaths = req.files && req.files.educationalDocs ? req.files.educationalDocs.map(f => f.location || f.path) : [];
 
     // Handle file uploads for previousCompanyDocs
-    const releaseLetterPath = req.files && req.files.releaseLetter ? normalizePath(req.files.releaseLetter[0].path) : undefined;
-    const offerLetterPath = req.files && req.files.offerLetter ? normalizePath(req.files.offerLetter[0].path) : undefined;
-    const experienceLetterPath = req.files && req.files.experienceLetter ? normalizePath(req.files.experienceLetter[0].path) : undefined;
-    const bankStatementOrSalarySlipPaths = req.files && req.files.bankStatementOrSalarySlip ? req.files.bankStatementOrSalarySlip.map(f => normalizePath(f.path)) : [];
+    const releaseLetterPath = req.files && req.files.releaseLetter ? (req.files.releaseLetter[0].location || req.files.releaseLetter[0].path) : undefined;
+    const offerLetterPath = req.files && req.files.offerLetter ? (req.files.offerLetter[0].location || req.files.offerLetter[0].path) : undefined;
+    const experienceLetterPath = req.files && req.files.experienceLetter ? (req.files.experienceLetter[0].location || req.files.experienceLetter[0].path) : undefined;
+    const bankStatementOrSalarySlipPaths = req.files && req.files.bankStatementOrSalarySlip ? req.files.bankStatementOrSalarySlip.map(f => f.location || f.path) : [];
 
 
 
@@ -93,7 +93,8 @@ export const createEmployee = async (req, res) => {
         accountNumber,
         ifscCode
       },
-      password: hashedPassword
+      password: hashedPassword,
+      agentIds: [empId] // Always set agentIds as array with empId
     };
 
     let newEmployee;
@@ -110,13 +111,24 @@ export const createEmployee = async (req, res) => {
         experienceLetterPath,
         ...bankStatementOrSalarySlipPaths
       ].filter(Boolean);
+      
+      // Delete local files if they exist
       allFilePaths.forEach(filePath => {
-        try {
-          fs.unlinkSync(path.resolve(filePath));
-        } catch (e) {
-          // Ignore file delete errors
+        if (filePath && !filePath.startsWith('http')) {
+          try {
+            fs.unlinkSync(path.resolve(filePath));
+            console.log('Deleted local file:', filePath);
+          } catch (e) {
+            // Ignore file delete errors
+          }
         }
       });
+      
+      // Log S3 files that would need cleanup
+      const s3Files = allFilePaths.filter(filePath => filePath && filePath.startsWith('http'));
+      if (s3Files.length > 0) {
+        console.log('S3 files that may need cleanup:', s3Files);
+      }
       return res.status(500).json({ success: false, message: err.message });
     }
 
@@ -179,6 +191,9 @@ export const updateEmployee = async (req, res) => {
       if (key === 'password') {
         // Hash new password if provided
         employee.password = bcrypt.hashSync(req.body.password, 10);
+      } else if (key === 'empId') {
+        employee.empId = req.body.empId;
+        employee.agentIds = [req.body.empId]; // Sync agentIds with empId
       } else {
         employee[key] = req.body[key];
       }
@@ -186,27 +201,27 @@ export const updateEmployee = async (req, res) => {
 
     // Handle file uploads for identityDocs
     if (req.files && req.files.pancard) {
-      employee.identityDocs.panCard = normalizePath(req.files.pancard[0].path);
+      employee.identityDocs.panCard = req.files.pancard[0].location || req.files.pancard[0].path;
     }
     if (req.files && req.files.aadharcard) {
-      employee.identityDocs.aadharCard = normalizePath(req.files.aadharcard[0].path);
+      employee.identityDocs.aadharCard = req.files.aadharcard[0].location || req.files.aadharcard[0].path;
     }
     if (req.files && req.files.educationalDocs) {
-      employee.identityDocs.educationalDocs = req.files.educationalDocs.map(f => normalizePath(f.path));
+      employee.identityDocs.educationalDocs = req.files.educationalDocs.map(f => f.location || f.path);
     }
 
     // Handle file uploads for previousCompanyDocs
     if (req.files && req.files.releaseLetter) {
-      employee.previousCompanyDocs.releaseLetter = normalizePath(req.files.releaseLetter[0].path);
+      employee.previousCompanyDocs.releaseLetter = req.files.releaseLetter[0].location || req.files.releaseLetter[0].path;
     }
     if (req.files && req.files.offerLetter) {
-      employee.previousCompanyDocs.offerLetter = normalizePath(req.files.offerLetter[0].path);
+      employee.previousCompanyDocs.offerLetter = req.files.offerLetter[0].location || req.files.offerLetter[0].path;
     }
     if (req.files && req.files.experienceLetter) {
-      employee.previousCompanyDocs.experienceLetter = normalizePath(req.files.experienceLetter[0].path);
+      employee.previousCompanyDocs.experienceLetter = req.files.experienceLetter[0].location || req.files.experienceLetter[0].path;
     }
     if (req.files && req.files.bankStatementOrSalarySlip) {
-      employee.previousCompanyDocs.bankStatementOrSalarySlip = req.files.bankStatementOrSalarySlip.map(f => normalizePath(f.path));
+      employee.previousCompanyDocs.bankStatementOrSalarySlip = req.files.bankStatementOrSalarySlip.map(f => f.location || f.path);
     }
 
     // Handle bankDetails

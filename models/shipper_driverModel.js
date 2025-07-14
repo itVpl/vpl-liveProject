@@ -44,6 +44,7 @@ const shipperDriverSchema = new mongoose.Schema({
       required: false
     }
   },
+  agentIds: [{ type: String }],
   compName: String,
   mc_dot_no: String,
   carrierType: String,
