@@ -99,6 +99,19 @@ const arrivalUpload = multer({
   { name: 'Seal', maxCount: 5 }
 ]);
 
+const chatFileFilter = (req, file, cb) => {
+  const allowed = /jpeg|jpg|png|pdf/;
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowed.test(ext)) cb(null, true);
+  else cb(new Error('Only JPG, PNG, and PDF files are allowed.'));
+};
+
+const chatFileUpload = multer({
+  storage: getS3Storage(() => `chatFiles`),
+  fileFilter: chatFileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 } // 20MB limit for chat files
+});
+
 const getS3Url = (key) => {
   if (!key || !isS3Configured) return '';
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
@@ -125,5 +138,6 @@ export {
   shipperTruckerUpload,
   proofOfDeliveryUpload,
   arrivalUpload,
-  getS3Url
+  getS3Url,
+  chatFileUpload // export new middleware
 };

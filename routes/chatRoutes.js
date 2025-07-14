@@ -25,12 +25,13 @@ import {
 } from '../controllers/chatController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { sendMessage } from '../controllers/chatController.js';
+import { chatFileUpload } from '../middlewares/upload.js';
 
 export default function(io) {
   const router = express.Router();
 
   // Pass `io` to sendMessage
-  router.post('/send', isAuthenticatedEmployee, sendMessage(io));
+  router.post('/send', isAuthenticatedEmployee, chatFileUpload.single('file'), sendMessage(io));
   router.get('/with/:empId', isAuthenticatedEmployee, getChat);
   router.get('/list', isAuthenticatedEmployee, getChatList);
   router.patch('/seen/:empId', isAuthenticatedEmployee, markAsSeen);
