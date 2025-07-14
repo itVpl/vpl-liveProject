@@ -6,7 +6,7 @@ import { deactivateModule } from '../controllers/moduleMasterController.js';
 const router = express.Router();
 
 router.post('/', isAuthenticatedEmployee, isSuperAdmin, addModule);       
-// router.get('/', isAuthenticatedEmployee, isSuperAdmin, getAllModules);   removed by rohit  
+// router.get('/', isAuthenticatedEmployee, isSuperAdmin, getAllModules);   //removed by rohit  
 router.get('/', isAuthenticatedEmployee, getAllModules);    
 router.patch('/deactivate/:id', isAuthenticatedEmployee, isSuperAdmin, deactivateModule);
 router.patch('/activate/:id', isAuthenticatedEmployee, isSuperAdmin, activateModule);
