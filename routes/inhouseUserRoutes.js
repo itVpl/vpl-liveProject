@@ -22,7 +22,7 @@ import {
   getMeetingsByEmpId,
   unassignModulesFromMaster
 } from '../controllers/inhouseUserController.js';
-import { isHRDepartment } from '../docs/isHRDepartment.js';
+import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
 const router = express.Router();
 
