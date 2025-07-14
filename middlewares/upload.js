@@ -1,134 +1,129 @@
+// middleware/upload.js
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import pkg from 'cloudinary';
-const { v2: cloudinary } = pkg;
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import AWS from 'aws-sdk';
+import multerS3 from 'multer-s3';
 
-// Fix __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const baseUploadPath = path.join(__dirname, '../uploads/employeeData');
-if (!fs.existsSync(baseUploadPath)) {
-  fs.mkdirSync(baseUploadPath, { recursive: true });
+const REGION = process.env.AWS_REGION || 'eu-north-1';
+const BUCKET = process.env.AWS_S3_BUCKET_NAME || process.env.S3_BUCKET_NAME;
+const isS3Configured = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && BUCKET;
+
+console.log("🔐 AWS_ACCESS_KEY_ID:", process.env.AWS_ACCESS_KEY_ID);
+console.log("🧪 AWS_SECRET_ACCESS_KEY:", process.env.AWS_SECRET_ACCESS_KEY ? "LOADED" : "MISSING");
+console.log("🌍 AWS_REGION:", process.env.AWS_REGION);
+console.log("🪣 AWS_S3_BUCKET_NAME:", process.env.AWS_S3_BUCKET_NAME);
+
+if (!isS3Configured) {
+  console.warn('⚠️ AWS S3 not configured. Falling back to local storage.');
 }
 
-// 🔥 New: Shipper/Trucker upload path
-const shipperTruckerBasePath = path.join(__dirname, '../uploads/shipperTruckerData');
-if (!fs.existsSync(shipperTruckerBasePath)) {
-  fs.mkdirSync(shipperTruckerBasePath, { recursive: true });
-}
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+const s3 = new AWS.S3({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: REGION,
+  signatureVersion: 'v4',
+  correctClockSkew: true
 });
 
-const cloudinaryStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'vpl_uploads', // You can change this folder name
-    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
-  },
-});
-
-const upload = multer({ storage: cloudinaryStorage });
-
-// Local storage for employee data
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const empId = req.body.empId || 'unknown_' + Date.now();
-    const empFolder = path.join(baseUploadPath, empId);
-    if (!fs.existsSync(empFolder)) {
-      fs.mkdirSync(empFolder, { recursive: true });
+const localStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
-    cb(null, empFolder);
+    cb(null, uploadPath);
   },
-  filename: function (req, file, cb) {
+  filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const filename = `${file.fieldname}_${Date.now()}${ext}`;
-    cb(null, filename);
-  },
-});
-
-// Local storage for shipper/trucker data
-const shipperTruckerStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const companyName = req.body.compName || 'unknown_' + Date.now();
-    const companyFolder = path.join(shipperTruckerBasePath, companyName.replace(/[^a-zA-Z0-9]/g, '_'));
-    if (!fs.existsSync(companyFolder)) {
-      fs.mkdirSync(companyFolder, { recursive: true });
-    }
-    cb(null, companyFolder);
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const filename = `${file.fieldname}_${Date.now()}${ext}`;
-    cb(null, filename);
-  },
+    const name = `${file.fieldname}_${Date.now()}${ext}`;
+    cb(null, name);
+  }
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /pdf|jpg|jpeg|png/;
+  const allowed = /jpeg|jpg|png|pdf/;
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowedTypes.test(ext)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only PDF and image files are allowed.'));
-  }
+  if (allowed.test(ext)) cb(null, true);
+  else cb(new Error('Only JPG, PNG, and PDF files are allowed.'));
 };
 
-const employeeUpload = multer({ storage, fileFilter });
-const shipperTruckerUpload = multer({ storage: shipperTruckerStorage, fileFilter });
+const getS3Storage = (prefixBuilder) => {
+  if (!isS3Configured) return localStorage;
 
-const normalizePath = (filePath) => {
-  const relBase = 'uploads' + path.sep + 'employeeData';
-  const idx = filePath.indexOf(relBase);
-  let relPath = filePath;
-  if (idx !== -1) {
-    relPath = filePath.substring(idx);
-  }
-  return relPath.split(path.sep).join('/');
-};
-
-// 🔥 New: Normalize shipper/trucker path
-const normalizeShipperTruckerPath = (filePath) => {
-  const relBase = 'uploads' + path.sep + 'shipperTruckerData';
-  const idx = filePath.indexOf(relBase);
-  let relPath = filePath;
-  if (idx !== -1) {
-    relPath = filePath.substring(idx);
-  }
-  return relPath.split(path.sep).join('/');
-};
-
-// Proof of Delivery storage for loads
-const proofOfDeliveryBasePath = path.join(__dirname, '../uploads/proofOfDelivery');
-if (!fs.existsSync(proofOfDeliveryBasePath)) {
-  fs.mkdirSync(proofOfDeliveryBasePath, { recursive: true });
-}
-
-const proofOfDeliveryStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const loadId = req.params.id || 'unknown_' + Date.now();
-    const loadFolder = path.join(proofOfDeliveryBasePath, loadId);
-    if (!fs.existsSync(loadFolder)) {
-      fs.mkdirSync(loadFolder, { recursive: true });
+  return multerS3({
+    s3,
+    bucket: BUCKET,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    contentDisposition: 'inline',
+    metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
+    key: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const filename = `${prefixBuilder(req)}/${file.fieldname}_${Date.now()}${ext}`;
+      cb(null, filename);
     }
-    cb(null, loadFolder);
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const filename = `${file.fieldname}_${Date.now()}${ext}`;
-    cb(null, filename);
-  },
+  });
+};
+
+const employeeUpload = multer({
+  storage: getS3Storage(req => `employeeData/${req.body.empId || 'unknown'}`),
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-const proofOfDeliveryUpload = multer({ storage: proofOfDeliveryStorage, fileFilter });
+const shipperTruckerUpload = multer({
+  storage: getS3Storage(req => `shipperTruckerData/${(req.body.compName || 'unknown').replace(/[^a-z0-9]/gi, '_')}`),
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
 
-export { normalizePath, normalizeShipperTruckerPath };
-export { shipperTruckerUpload, proofOfDeliveryUpload };
-export default upload;
+const proofOfDeliveryUpload = multer({
+  storage: getS3Storage(req => `proofOfDelivery/${req.params.id || 'unknown'}`),
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+const arrivalUpload = multer({
+  storage: getS3Storage(() => `arrivalUploads`),
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }
+}).fields([
+  { name: 'vehicleEmptyImg', maxCount: 5 },
+  { name: 'vehicleLoadedImg', maxCount: 5 },
+  { name: 'POD', maxCount: 5 },
+  { name: 'EIRticketImg', maxCount: 5 },
+  { name: 'Seal', maxCount: 5 }
+]);
+
+const getS3Url = (key) => {
+  if (!key || !isS3Configured) return '';
+  return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+};
+
+const normalizePath = (pathStr) => {
+  if (!pathStr) return '';
+  if (pathStr.startsWith('http')) return pathStr;
+  if (isS3Configured && /employeeData|arrivalUploads|proofOfDelivery/.test(pathStr)) return getS3Url(pathStr);
+  return pathStr;
+};
+
+const normalizeShipperTruckerPath = (pathStr) => {
+  if (!pathStr) return '';
+  if (pathStr.startsWith('http')) return pathStr;
+  if (isS3Configured && pathStr.includes('shipperTruckerData')) return getS3Url(pathStr);
+  return pathStr;
+};
+
+export {
+  normalizePath,
+  normalizeShipperTruckerPath,
+  employeeUpload,
+  shipperTruckerUpload,
+  proofOfDeliveryUpload,
+  arrivalUpload,
+  getS3Url
+};
