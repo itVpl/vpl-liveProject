@@ -19,7 +19,7 @@ import {
     updateLoadsWithGeocoding
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper } from '../middlewares/auth.js';
-import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid } from '../controllers/bidController.js';
+import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid, updateTrackingLocationByShipment as updateTrackingLocationByShipmentBid } from '../controllers/bidController.js';
 import { proofOfDeliveryUpload, shipperTruckerUpload } from '../middlewares/upload.js';
 
 const loadRouter = express.Router();
@@ -46,6 +46,9 @@ loadRouter.get('/trucker', isAuthenticatedUser, getTruckerLoads);
 // Get all shipments from Tracking table
 loadRouter.get('/all-trackings', getAllTrackings);
 loadRouter.get('/shipment/:shipmentNumber', getTrackingByShipmentNumber);
+
+// Tracking location update route by shipment number (MUST BE BEFORE PARAMETERIZED ROUTES)
+loadRouter.post('/shipment/:shipmentNumber/location', isAuthenticatedUser, updateTrackingLocationByShipmentBid);
 
 // Parameterized routes last
 loadRouter.get('/:id', getLoadDetails); // Public route for load details

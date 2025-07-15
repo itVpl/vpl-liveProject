@@ -729,6 +729,26 @@ export const updateTrackingLocation = async (req, res, next) => {
     }
 };
 
+// Update tracking location by shipment number (for real-time updates from app)
+export const updateTrackingLocationByShipment = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { lat, lon } = req.body;
+        if (!lat || !lon) {
+            return res.status(400).json({ success: false, message: 'Latitude and longitude are required.' });
+        }
+        const tracking = await Tracking.findOne({ shipmentNumber: shipmentNumber });
+        if (!tracking) {
+            return res.status(404).json({ success: false, message: 'Tracking record not found for this shipment number.' });
+        }
+        tracking.currentLocation = { lat, lon, updatedAt: new Date() };
+        await tracking.save();
+        res.status(200).json({ success: true, message: 'Location updated successfully.', tracking });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // Update tracking status (for in_transit, delivered, etc.)
 export const updateTrackingStatus = async (req, res, next) => {
     try {
