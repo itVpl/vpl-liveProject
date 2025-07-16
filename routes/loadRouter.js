@@ -74,7 +74,7 @@ loadRouter.get('/all-trackings', getAllTrackings);
 loadRouter.get('/shipment/:shipmentNumber', getTrackingByShipmentNumber);
 
 // Tracking location update route by shipment number (MUST BE BEFORE PARAMETERIZED ROUTES)
-loadRouter.post('/shipment/:shipmentNumber/location', isAuthenticatedUser, updateTrackingLocationByShipmentBid);
+loadRouter.post('/shipment/:shipmentNumber/location', updateTrackingLocationByShipmentBid); // Removed authentication for testing
 
 // Parameterized routes last
 loadRouter.get('/:id', getLoadDetails); // Public route for load details
