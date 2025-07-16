@@ -13,10 +13,10 @@ const REGION = process.env.AWS_REGION || 'eu-north-1';
 const BUCKET = process.env.AWS_S3_BUCKET_NAME || process.env.S3_BUCKET_NAME;
 const isS3Configured = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && BUCKET;
 
-console.log("🔐 AWS_ACCESS_KEY_ID:", process.env.AWS_ACCESS_KEY_ID);
-console.log("🧪 AWS_SECRET_ACCESS_KEY:", process.env.AWS_SECRET_ACCESS_KEY ? "LOADED" : "MISSING");
-console.log("🌍 AWS_REGION:", process.env.AWS_REGION);
-console.log("🪣 AWS_S3_BUCKET_NAME:", process.env.AWS_S3_BUCKET_NAME);
+// console.log("🔐 AWS_ACCESS_KEY_ID:", process.env.AWS_ACCESS_KEY_ID);
+// console.log("🧪 AWS_SECRET_ACCESS_KEY:", process.env.AWS_SECRET_ACCESS_KEY ? "LOADED" : "MISSING");
+// console.log("🌍 AWS_REGION:", process.env.AWS_REGION);
+// console.log("🪣 AWS_S3_BUCKET_NAME:", process.env.AWS_S3_BUCKET_NAME);
 
 if (!isS3Configured) {
   console.warn('⚠️ AWS S3 not configured. Falling back to local storage.');
@@ -72,25 +72,25 @@ const getS3Storage = (prefixBuilder) => {
 const employeeUpload = multer({
   storage: getS3Storage(req => `employeeData/${req.body.empId || 'unknown'}`),
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }
+  limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 const shipperTruckerUpload = multer({
   storage: getS3Storage(req => `shipperTruckerData/${(req.body.compName || 'unknown').replace(/[^a-z0-9]/gi, '_')}`),
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }
+  limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 const proofOfDeliveryUpload = multer({
   storage: getS3Storage(req => `proofOfDelivery/${req.params.id || 'unknown'}`),
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }
+  limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 const arrivalUpload = multer({
   storage: getS3Storage(() => `arrivalUploads`),
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }
+  limits: { fileSize: 20 * 1024 * 1024 }
 }).fields([
   { name: 'vehicleEmptyImg', maxCount: 5 },
   { name: 'vehicleLoadedImg', maxCount: 5 },
@@ -98,6 +98,25 @@ const arrivalUpload = multer({
   { name: 'EIRticketImg', maxCount: 5 },
   { name: 'Seal', maxCount: 5 }
 ]);
+
+// Driver image upload configurations - Optional files
+const driverPickupUpload = multer({
+  storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/pickup`),
+  fileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 }
+}).any(); // Accept any files
+
+const driverLoadedUpload = multer({
+  storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/loaded`),
+  fileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 }
+}).any(); // Accept any files
+
+const driverPODUpload = multer({
+  storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/pod`),
+  fileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 }
+}).any(); // Accept any files
 
 const chatFileFilter = (req, file, cb) => {
   const allowed = /jpeg|jpg|png|pdf/;
@@ -138,6 +157,9 @@ export {
   shipperTruckerUpload,
   proofOfDeliveryUpload,
   arrivalUpload,
+  driverPickupUpload,
+  driverLoadedUpload,
+  driverPODUpload,
   getS3Url,
-  chatFileUpload // export new middleware
+  chatFileUpload 
 };

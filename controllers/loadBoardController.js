@@ -577,3 +577,55 @@ export const exportDeliveryDelaysPDF = async (req, res, next) => {
         doc.pipe(res);
     } catch (error) { next(error); }
 }; 
+
+// ✅ Get load images for load board
+export const getLoadBoardImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        const load = await Load.findOne({ shipmentNumber })
+            .populate('shipper', 'compName')
+            .populate('assignedTo', 'compName');
+
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        const images = {
+            emptyTruckImages: load.emptyTruckImages || [],
+            loadedTruckImages: load.loadedTruckImages || [],
+            podImages: load.podImages || [],
+            eirTickets: load.eirTickets || [],
+            containerImages: load.containerImages || [],
+            sealImages: load.sealImages || [],
+            damageImages: load.damageImages || [],
+            notes: load.notes || '',
+            originPlace: load.originPlace,
+            destinationPlace: load.destinationPlace,
+            loadStatus: load.status,
+            shipmentNumber: load.shipmentNumber,
+            shipper: load.shipper,
+            assignedTo: load.assignedTo
+        };
+
+        res.status(200).json({
+            success: true,
+            images,
+            loadInfo: {
+                origin: load.origin,
+                destination: load.destination,
+                commodity: load.commodity,
+                vehicleType: load.vehicleType,
+                weight: load.weight,
+                rate: load.rate,
+                pickupDate: load.pickupDate,
+                deliveryDate: load.deliveryDate
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+}; 

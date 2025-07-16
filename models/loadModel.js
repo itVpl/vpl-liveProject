@@ -128,10 +128,15 @@ const loadSchema = new mongoose.Schema({
     notes: { type: String, default: '' },
     location: { type: String, default: '' }
   },
-  emptyTruckImages: [{ type: String }],
-  loadedTruckImages: [{ type: String }],
-  podImages: [{ type: String }],
-  teirTickets: [{ type: String }],
+  // Driver uploaded images at different stages
+  emptyTruckImages: [{ type: String }], // Empty truck photos
+  loadedTruckImages: [{ type: String }], // Loaded truck photos
+  podImages: [{ type: String }], // Proof of Delivery images
+  eirTickets: [{ type: String }], // Equipment Interchange Receipt tickets
+  containerImages: [{ type: String }], // Container condition images
+  sealImages: [{ type: String }], // Container seal images
+  damageImages: [{ type: String }], // Any damage documentation
+  notes: { type: String, default: '' }, // Driver notes
 });
 
 // Update the updatedAt field before saving

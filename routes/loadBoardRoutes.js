@@ -10,6 +10,7 @@ import {
     exportDeliveryDelaysExcel,
     exportCompletedLoadsPDF,
     exportDeliveryDelaysPDF,
+    getLoadBoardImages,
 } from '../controllers/loadBoardController.js';
 import { isAuthenticatedUser } from '../middlewares/auth.js';
 
@@ -26,5 +27,8 @@ loadBoardRouter.get('/reports/completed-loads/excel', exportCompletedLoadsExcel)
 loadBoardRouter.get('/reports/delivery-delays/excel', exportDeliveryDelaysExcel); // Delivery delays Excel export
 loadBoardRouter.get('/reports/completed-loads/pdf', exportCompletedLoadsPDF); // Completed loads PDF export
 loadBoardRouter.get('/reports/delivery-delays/pdf', exportDeliveryDelaysPDF); // Delivery delays PDF export
+
+// Load images route
+loadBoardRouter.get('/shipment/:shipmentNumber/images', getLoadBoardImages); // Public route for viewing load images
 
 export default loadBoardRouter; 

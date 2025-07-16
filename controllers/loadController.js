@@ -724,3 +724,904 @@ export const getTrackingByShipmentNumber = async (req, res, next) => {
       next(error);
     }
   };
+
+// ✅ Driver upload images at pickup point
+export const uploadPickupImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { notes, driverId } = req.body;
+        
+        // Use driverId from body if provided, otherwise use authenticated user
+        const actualDriverId = driverId || (req.user ? req.user._id : null);
+        
+        if (!actualDriverId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Driver ID is required'
+            });
+        }
+
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Check if driver is assigned to this load
+        if (load.assignedTo?.toString() !== actualDriverId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to upload images for this load'
+            });
+        }
+
+        // Check if load status allows image upload (more flexible)
+        const allowedStatuses = ['Assigned', 'In Transit', 'POD_uploaded'];
+        if (!allowedStatuses.includes(load.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Load status '${load.status}' does not allow image upload at this stage. Allowed statuses: ${allowedStatuses.join(', ')}`
+            });
+        }
+
+        // Handle files from req.files array (multer.any() returns array)
+        const files = req.files || [];
+        
+        // Group files by fieldname
+        const uploadedImages = {
+            emptyTruckImages: files.filter(f => f.fieldname === 'emptyTruckImages').map(f => f.path || f.location),
+            eirTickets: files.filter(f => f.fieldname === 'eirTickets').map(f => f.path || f.location),
+            containerImages: files.filter(f => f.fieldname === 'containerImages').map(f => f.path || f.location),
+            sealImages: files.filter(f => f.fieldname === 'sealImages').map(f => f.path || f.location),
+            notes: notes || ''
+        };
+
+        // Log for debugging
+        console.log('📸 Debug - Files received:', {
+            totalFiles: files.length,
+            fileNames: files.map(f => f.fieldname),
+            emptyTruckImages: uploadedImages.emptyTruckImages.length,
+            eirTickets: uploadedImages.eirTickets.length,
+            containerImages: uploadedImages.containerImages.length,
+            sealImages: uploadedImages.sealImages.length
+        });
+
+        // Update load with pickup images
+        const updatedLoad = await Load.findOneAndUpdate(
+            { shipmentNumber },
+            {
+                $push: {
+                    emptyTruckImages: { $each: uploadedImages.emptyTruckImages },
+                    eirTickets: { $each: uploadedImages.eirTickets },
+                    containerImages: { $each: uploadedImages.containerImages },
+                    sealImages: { $each: uploadedImages.sealImages }
+                },
+                $set: {
+                    notes: uploadedImages.notes,
+                    'originPlace.status': 1,
+                    'originPlace.arrivedAt': new Date(),
+                    'originPlace.location': `${load.origin.city}, ${load.origin.state}`,
+                    status: 'In Transit'
+                }
+            },
+            { new: true }
+        ).populate('shipper', 'compName email');
+
+        // Send notification to shipper
+        try {
+            const subject = `🚛 Driver Arrived at Pickup Point - Load #${shipmentNumber}`;
+            const html = `
+                <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                    <h2 style="color: #2a7ae2; text-align: center;">📸 Pickup Images Uploaded</h2>
+                    <p style="font-size: 16px; color: #333;">Your driver has arrived at the pickup point and uploaded the following images:</p>
+                    <ul style="font-size: 14px; color: #555;">
+                        <li>Empty truck photos: ${uploadedImages.emptyTruckImages.length} images</li>
+                        <li>EIR tickets: ${uploadedImages.eirTickets.length} images</li>
+                        <li>Container condition: ${uploadedImages.containerImages.length} images</li>
+                        <li>Seal images: ${uploadedImages.sealImages.length} images</li>
+                    </ul>
+                    <p style="font-size: 14px; color: #666;"><strong>Driver Notes:</strong> ${uploadedImages.notes || 'No notes provided'}</p>
+                    <p style="font-size: 15px; color: #555;">Login to your <a href='https://vpl.com' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> to view the images!</p>
+                </div>
+            `;
+            
+            await sendEmail({
+                to: load.shipper.email,
+                subject,
+                html
+            });
+        } catch (emailErr) {
+            console.error('❌ Error sending pickup notification:', emailErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Pickup images uploaded successfully',
+            load: updatedLoad,
+            uploadedImages: {
+                emptyTruckImages: uploadedImages.emptyTruckImages.length,
+                eirTickets: uploadedImages.eirTickets.length,
+                containerImages: uploadedImages.containerImages.length,
+                sealImages: uploadedImages.sealImages.length
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Driver upload loaded truck images
+export const uploadLoadedTruckImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { notes, driverId } = req.body;
+        
+        // Use driverId from body if provided, otherwise use authenticated user
+        const actualDriverId = driverId || (req.user ? req.user._id : null);
+        
+        if (!actualDriverId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Driver ID is required'
+            });
+        }
+
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Check if driver is assigned to this load
+        if (load.assignedTo?.toString() !== actualDriverId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to upload images for this load'
+            });
+        }
+
+        // Check if load status allows loaded truck image upload
+        if (load.status !== 'In Transit') {
+            return res.status(400).json({
+                success: false,
+                message: 'Load must be in transit to upload loaded truck images'
+            });
+        }
+
+        // Handle files from req.files array
+        const files = req.files || [];
+        
+        const loadedTruckImages = files.filter(f => f.fieldname === 'loadedTruckImages').map(f => f.path || f.location);
+        const damageImages = files.filter(f => f.fieldname === 'damageImages').map(f => f.path || f.location);
+
+        // Update load with loaded truck images
+        const updatedLoad = await Load.findOneAndUpdate(
+            { shipmentNumber },
+            {
+                $push: {
+                    loadedTruckImages: { $each: loadedTruckImages },
+                    damageImages: { $each: damageImages }
+                },
+                $set: {
+                    notes: notes || load.notes
+                }
+            },
+            { new: true }
+        ).populate('shipper', 'compName email');
+
+        // Send notification to shipper
+        try {
+            const subject = `📦 Loaded Truck Images - Load #${shipmentNumber}`;
+            const html = `
+                <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                    <h2 style="color: #2a7ae2; text-align: center;">🚛 Truck Loaded Successfully</h2>
+                    <p style="font-size: 16px; color: #333;">Your driver has uploaded loaded truck images:</p>
+                    <ul style="font-size: 14px; color: #555;">
+                        <li>Loaded truck photos: ${loadedTruckImages.length} images</li>
+                        <li>Damage documentation: ${damageImages.length} images</li>
+                    </ul>
+                    <p style="font-size: 14px; color: #666;"><strong>Driver Notes:</strong> ${notes || 'No notes provided'}</p>
+                    <p style="font-size: 15px; color: #555;">Login to your <a href='https://vpl.com' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> to view the images!</p>
+                </div>
+            `;
+            
+            await sendEmail({
+                to: load.shipper.email,
+                subject,
+                html
+            });
+        } catch (emailErr) {
+            console.error('❌ Error sending loaded truck notification:', emailErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Loaded truck images uploaded successfully',
+            load: updatedLoad,
+            uploadedImages: {
+                loadedTruckImages: loadedTruckImages.length,
+                damageImages: damageImages.length
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Driver upload POD images at delivery
+export const uploadPODImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { notes, driverId } = req.body;
+        
+        // Use driverId from body if provided, otherwise use authenticated user
+        const actualDriverId = driverId || (req.user ? req.user._id : null);
+        
+        if (!actualDriverId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Driver ID is required'
+            });
+        }
+
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Check if driver is assigned to this load
+        if (load.assignedTo?.toString() !== actualDriverId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to upload images for this load'
+            });
+        }
+
+        // Real-time status check
+        console.log('🔍 POD Upload - Real-time status check:', {
+            loadStatus: load.status,
+            expectedStatus: 'In Transit',
+            isEqual: load.status === 'In Transit',
+            loadStatusType: typeof load.status,
+            loadId: load._id,
+            shipmentNumber: load.shipmentNumber,
+            updatedAt: load.updatedAt
+        });
+
+        // Check if load status allows POD upload (case-insensitive)
+        if (load.status?.trim().toLowerCase() !== 'in transit') {
+            return res.status(400).json({
+                success: false,
+                message: 'Load must be in transit to upload POD images',
+                debug: {
+                    currentStatus: load.status,
+                    expectedStatus: 'In Transit',
+                    currentStatusTrimmed: load.status?.trim(),
+                    currentStatusLower: load.status?.toLowerCase(),
+                    loadId: load._id,
+                    shipmentNumber: load.shipmentNumber
+                }
+            });
+        }
+
+        // Handle files from req.files array
+        const files = req.files || [];
+        
+        const podImages = files.filter(f => f.fieldname === 'podImages').map(f => f.path || f.location);
+        const deliveryNotes = req.body.deliveryNotes || '';
+
+        // Update load with POD images
+        const updatedLoad = await Load.findOneAndUpdate(
+            { shipmentNumber },
+            {
+                $push: {
+                    podImages: { $each: podImages }
+                },
+                $set: {
+                    notes: notes || load.notes,
+                    'destinationPlace.status': 1,
+                    'destinationPlace.arrivedAt': new Date(),
+                    'destinationPlace.location': `${load.destination.city}, ${load.destination.state}`,
+                    'destinationPlace.notes': deliveryNotes,
+                    status: 'POD_uploaded'
+                }
+            },
+            { new: true }
+        ).populate('shipper', 'compName email');
+
+        // Send notification to shipper
+        try {
+            const subject = `📋 POD Images Uploaded - Load #${shipmentNumber}`;
+            const html = `
+                <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                    <h2 style="color: #2a7ae2; text-align: center;">✅ Delivery Completed</h2>
+                    <p style="font-size: 16px; color: #333;">Your driver has uploaded POD images for delivery:</p>
+                    <ul style="font-size: 14px; color: #555;">
+                        <li>POD images: ${podImages.length} images</li>
+                    </ul>
+                    <p style="font-size: 14px; color: #666;"><strong>Driver Notes:</strong> ${notes || 'No notes provided'}</p>
+                    <p style="font-size: 14px; color: #666;"><strong>Delivery Notes:</strong> ${deliveryNotes || 'No delivery notes'}</p>
+                    <p style="font-size: 15px; color: #555;">Login to your <a href='https://vpl.com' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> to review and approve the delivery!</p>
+                </div>
+            `;
+            
+            await sendEmail({
+                to: load.shipper.email,
+                subject,
+                html
+            });
+        } catch (emailErr) {
+            console.error('❌ Error sending POD notification:', emailErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'POD images uploaded successfully',
+            load: updatedLoad,
+            uploadedImages: {
+                podImages: podImages.length
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Get load images for driver/shipper
+export const getLoadImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { driverId, shipperId } = req.query;
+        
+        // Use IDs from query if provided, otherwise use authenticated user
+        const actualDriverId = driverId || (req.user ? req.user._id : null);
+        const actualShipperId = shipperId || (req.user ? req.user._id : null);
+
+        const load = await Load.findOne({ shipmentNumber })
+            .populate('shipper', 'compName')
+            .populate('assignedTo', 'compName');
+
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Check if user is authorized to view images
+        const isShipper = load.shipper?._id.toString() === actualShipperId?.toString();
+        const isDriver = load.assignedTo?._id.toString() === actualDriverId?.toString();
+        
+        if (!isShipper && !isDriver) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to view images for this load'
+            });
+        }
+
+        const images = {
+            emptyTruckImages: load.emptyTruckImages || [],
+            loadedTruckImages: load.loadedTruckImages || [],
+            podImages: load.podImages || [],
+            eirTickets: load.eirTickets || [],
+            containerImages: load.containerImages || [],
+            sealImages: load.sealImages || [],
+            damageImages: load.damageImages || [],
+            notes: load.notes || '',
+            originPlace: load.originPlace,
+            destinationPlace: load.destinationPlace
+        };
+
+        res.status(200).json({
+            success: true,
+            images,
+            loadStatus: load.status,
+            shipmentNumber: load.shipmentNumber
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Test authentication endpoint
+export const testAuth = async (req, res, next) => {
+    try {
+        console.log('🔍 Debug - req.user:', req.user);
+        console.log('🔍 Debug - req.headers.authorization:', req.headers.authorization);
+        
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: 'No user found in request'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Authentication successful',
+            user: {
+                id: req.user._id,
+                email: req.user.email,
+                userType: req.user.userType,
+                status: req.user.status,
+                compName: req.user.compName
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Debug file upload endpoint
+export const debugFileUpload = async (req, res, next) => {
+    try {
+        console.log('🔍 Debug - req.files:', req.files);
+        console.log('🔍 Debug - req.body:', req.body);
+        console.log('🔍 Debug - req.headers:', req.headers);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Debug information',
+            files: req.files ? Object.keys(req.files) : 'No files',
+            body: req.body,
+            contentType: req.headers['content-type']
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Simple test endpoint without files
+export const testPickupWithoutFiles = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { notes, driverId } = req.body;
+        
+        console.log('🧪 Test - Request received:', {
+            shipmentNumber,
+            notes,
+            driverId,
+            files: req.files ? Object.keys(req.files) : 'No files'
+        });
+        
+        if (!driverId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Driver ID is required'
+            });
+        }
+
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Check if driver is assigned to this load
+        if (load.assignedTo?.toString() !== driverId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to upload images for this load'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Test successful - Driver authorized',
+            load: {
+                shipmentNumber: load.shipmentNumber,
+                origin: load.origin,
+                destination: load.destination,
+                status: load.status,
+                assignedTo: load.assignedTo
+            },
+            driverId,
+            notes
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Test load status endpoint
+export const testLoadStatus = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        console.log('🔍 Debug - Load status details:', {
+            loadId: load._id,
+            shipmentNumber: load.shipmentNumber,
+            status: load.status,
+            statusType: typeof load.status,
+            statusLength: load.status ? load.status.length : 0,
+            statusBytes: load.status ? Buffer.from(load.status).toString('hex') : 'null'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Load status check',
+            load: {
+                id: load._id,
+                shipmentNumber: load.shipmentNumber,
+                status: load.status,
+                statusType: typeof load.status,
+                origin: load.origin,
+                destination: load.destination,
+                assignedTo: load.assignedTo
+            },
+            statusCheck: {
+                isInTransit: load.status === 'In Transit',
+                isAssigned: load.status === 'Assigned',
+                isPosted: load.status === 'Posted',
+                isBidding: load.status === 'Bidding'
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Real-time database check endpoint
+export const realTimeLoadCheck = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        console.log('🔍 Real-time check for shipment:', shipmentNumber);
+        
+        // Direct database query
+        const load = await Load.findOne({ shipmentNumber }).lean();
+        
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found in database'
+            });
+        }
+
+        console.log('🔍 Raw database data:', {
+            _id: load._id,
+            shipmentNumber: load.shipmentNumber,
+            status: load.status,
+            statusType: typeof load.status,
+            statusLength: load.status ? load.status.length : 0,
+            statusBytes: load.status ? Buffer.from(load.status).toString('hex') : 'null',
+            updatedAt: load.updatedAt
+        });
+
+        // Check if status matches expected values
+        const statusChecks = {
+            isInTransit: load.status === 'In Transit',
+            isInTransitLower: load.status?.toLowerCase() === 'in transit',
+            isInTransitTrimmed: load.status?.trim() === 'In Transit',
+            isPODUploaded: load.status === 'POD_uploaded',
+            isAssigned: load.status === 'Assigned',
+            isPosted: load.status === 'Posted'
+        };
+
+        res.status(200).json({
+            success: true,
+            message: 'Real-time database check',
+            load: {
+                _id: load._id,
+                shipmentNumber: load.shipmentNumber,
+                status: load.status,
+                statusType: typeof load.status,
+                statusLength: load.status ? load.status.length : 0,
+                updatedAt: load.updatedAt,
+                origin: load.origin,
+                destination: load.destination,
+                assignedTo: load.assignedTo
+            },
+            statusChecks,
+            rawStatus: {
+                value: load.status,
+                type: typeof load.status,
+                length: load.status ? load.status.length : 0,
+                hex: load.status ? Buffer.from(load.status).toString('hex') : 'null'
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in realTimeLoadCheck:', error);
+        next(error);
+    }
+};
+
+// Comprehensive debugging endpoint
+export const debugLoadStatus = async (req, res, next) => {
+    const { shipmentNumber } = req.params;
+    
+    console.log(`🔍 Debugging load status for shipment: ${shipmentNumber}`);
+    
+    try {
+        // Method 1: Direct database query
+        const directLoad = await Load.findOne({ shipmentNumber }).lean();
+        console.log('📊 Direct DB Query Result:', directLoad ? {
+            _id: directLoad._id,
+            status: directLoad.status,
+            statusType: typeof directLoad.status,
+            statusLength: directLoad.status ? directLoad.status.length : 0
+        } : 'Not found');
+        
+        // Method 2: Mongoose model query
+        const mongooseLoad = await Load.findOne({ shipmentNumber });
+        console.log('📊 Mongoose Query Result:', mongooseLoad ? {
+            _id: mongooseLoad._id,
+            status: mongooseLoad.status,
+            statusType: typeof mongooseLoad.status,
+            statusLength: mongooseLoad.status ? mongooseLoad.status.length : 0
+        } : 'Not found');
+        
+        // Method 3: Check if there are multiple records
+        const allLoads = await Load.find({ shipmentNumber }).lean();
+        console.log('📊 All matching loads:', allLoads.length);
+        
+        // Method 4: Check database connection
+        const dbState = mongoose.connection.readyState;
+        const dbStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+        console.log('📊 Database connection state:', dbStates[dbState]);
+        
+        // Method 5: Check collection stats
+        const collectionStats = await Load.collection.stats();
+        console.log('📊 Collection stats:', {
+            count: collectionStats.count,
+            size: collectionStats.size,
+            avgObjSize: collectionStats.avgObjSize
+        });
+        
+        // Method 6: Raw MongoDB query
+        const rawLoad = await Load.collection.findOne({ shipmentNumber });
+        console.log('📊 Raw MongoDB Query Result:', rawLoad ? {
+            _id: rawLoad._id,
+            status: rawLoad.status,
+            statusType: typeof rawLoad.status,
+            statusLength: rawLoad.status ? rawLoad.status.length : 0
+        } : 'Not found');
+        
+        // Method 7: Check for any status updates in recent time
+        const recentUpdates = await Load.find({ 
+            shipmentNumber,
+            updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+        }).select('status updatedAt').lean();
+        console.log('📊 Recent updates:', recentUpdates);
+        
+        // Method 8: Check if there are any triggers or middleware affecting the data
+        console.log('📊 Load model middleware count:', Load.schema.middleware.length);
+        
+        // Prepare response
+        const response = {
+            success: true,
+            message: "Comprehensive debugging information",
+            shipmentNumber,
+            databaseConnection: {
+                state: dbStates[dbState],
+                stateCode: dbState
+            },
+            collectionInfo: {
+                totalDocuments: collectionStats.count,
+                collectionSize: collectionStats.size
+            },
+            queryResults: {
+                directQuery: directLoad ? {
+                    _id: directLoad._id,
+                    status: directLoad.status,
+                    statusType: typeof directLoad.status,
+                    statusLength: directLoad.status ? directLoad.status.length : 0,
+                    updatedAt: directLoad.updatedAt
+                } : null,
+                mongooseQuery: mongooseLoad ? {
+                    _id: mongooseLoad._id,
+                    status: mongooseLoad.status,
+                    statusType: typeof mongooseLoad.status,
+                    statusLength: mongooseLoad.status ? mongooseLoad.status.length : 0,
+                    updatedAt: mongooseLoad.updatedAt
+                } : null,
+                rawMongoQuery: rawLoad ? {
+                    _id: rawLoad._id,
+                    status: rawLoad.status,
+                    statusType: typeof rawLoad.status,
+                    statusLength: rawLoad.status ? rawLoad.status.length : 0
+                } : null
+            },
+            matchingRecords: allLoads.length,
+            recentUpdates: recentUpdates,
+            statusChecks: {
+                isInTransit: directLoad ? directLoad.status === 'In Transit' : false,
+                isInTransitLower: directLoad ? directLoad.status?.toLowerCase() === 'in transit' : false,
+                isInTransitTrimmed: directLoad ? directLoad.status?.trim() === 'In Transit' : false,
+                isPODUploaded: directLoad ? directLoad.status === 'POD_uploaded' : false
+            }
+        };
+        
+        console.log('📊 Final Response:', JSON.stringify(response, null, 2));
+        
+        res.status(200).json(response);
+        
+    } catch (error) {
+        console.error('❌ Debug error:', error);
+        next(error);
+    }
+};
+
+// Manual status fix endpoint
+export const fixLoadStatus = async (req, res, next) => {
+    const { shipmentNumber } = req.params;
+    
+    console.log(`🔧 Fixing load status for shipment: ${shipmentNumber}`);
+    
+    try {
+        // First, check current status
+        const currentLoad = await Load.findOne({ shipmentNumber });
+        
+        if (!currentLoad) {
+            return res.status(404).json({
+                success: false,
+                message: "Load not found"
+            });
+        }
+        
+        console.log('📊 Current status before fix:', currentLoad.status);
+        
+        // Update status to "In Transit"
+        const updatedLoad = await Load.findOneAndUpdate(
+            { shipmentNumber },
+            { 
+                status: "In Transit",
+                updatedAt: new Date()
+            },
+            { new: true }
+        );
+        
+        console.log('📊 Status after fix:', updatedLoad.status);
+        
+        res.status(200).json({
+            success: true,
+            message: "Load status fixed to 'In Transit'",
+            load: {
+                _id: updatedLoad._id,
+                shipmentNumber: updatedLoad.shipmentNumber,
+                status: updatedLoad.status,
+                updatedAt: updatedLoad.updatedAt
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Fix error:', error);
+        next(error);
+    }
+};
+
+// Simple status check endpoint
+export const checkLoadStatus = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            load: {
+                _id: load._id,
+                shipmentNumber: load.shipmentNumber,
+                status: load.status,
+                statusType: typeof load.status,
+                statusLength: load.status ? load.status.length : 0,
+                assignedTo: load.assignedTo
+            },
+            statusChecks: {
+                isAssigned: ['Assigned', 'In Transit', 'POD_uploaded'].includes(load.status),
+                isInTransit: ['In Transit', 'POD_uploaded'].includes(load.status),
+                isPODUploaded: load.status === 'POD_uploaded'
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Show all uploaded images for a load
+export const showAllImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            load: {
+                _id: load._id,
+                shipmentNumber: load.shipmentNumber,
+                status: load.status,
+                assignedTo: load.assignedTo,
+                origin: load.origin,
+                destination: load.destination
+            },
+            images: {
+                pickup: {
+                    emptyTruckImages: load.emptyTruckImages?.length || 0,
+                    eirTickets: load.eirTickets?.length || 0,
+                    containerImages: load.containerImages?.length || 0,
+                    sealImages: load.sealImages?.length || 0
+                },
+                loaded: {
+                    loadedTruckImages: load.loadedTruckImages?.length || 0,
+                    damageImages: load.damageImages?.length || 0
+                },
+                delivery: {
+                    proofOfDelivery: load.proofOfDelivery?.length || 0
+                }
+            },
+            notes: load.notes,
+            originPlace: load.originPlace,
+            destinationPlace: load.destinationPlace
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Reset load status for testing
+export const resetLoadStatus = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { status = 'In Transit' } = req.body;
+        
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+        
+        const updatedLoad = await Load.findOneAndUpdate(
+            { shipmentNumber },
+            { 
+                status: status,
+                updatedAt: new Date()
+            },
+            { new: true }
+        );
+        
+        res.status(200).json({
+            success: true,
+            message: `Load status reset to '${status}'`,
+            load: {
+                _id: updatedLoad._id,
+                shipmentNumber: updatedLoad.shipmentNumber,
+                status: updatedLoad.status,
+                updatedAt: updatedLoad.updatedAt
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
