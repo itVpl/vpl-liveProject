@@ -72,25 +72,25 @@ const getS3Storage = (prefixBuilder) => {
 const employeeUpload = multer({
   storage: getS3Storage(req => `employeeData/${req.body.empId || 'unknown'}`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-const shipperTruckerUpload = multer({
+const shipperTruckerUpload = multer({ 
   storage: getS3Storage(req => `shipperTruckerData/${(req.body.compName || 'unknown').replace(/[^a-z0-9]/gi, '_')}`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 const proofOfDeliveryUpload = multer({
   storage: getS3Storage(req => `proofOfDelivery/${req.params.id || 'unknown'}`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 const arrivalUpload = multer({
   storage: getS3Storage(() => `arrivalUploads`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 }).fields([
   { name: 'vehicleEmptyImg', maxCount: 5 },
   { name: 'vehicleLoadedImg', maxCount: 5 },
@@ -103,20 +103,35 @@ const arrivalUpload = multer({
 const driverPickupUpload = multer({
   storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/pickup`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 }).any(); // Accept any files
 
 const driverLoadedUpload = multer({
   storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/loaded`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 }).any(); // Accept any files
 
 const driverPODUpload = multer({
   storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/pod`),
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 }
-}).any(); // Accept any files
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'podImages', maxCount: 10 },
+  { name: 'pod', maxCount: 10 },
+  { name: 'proofOfDelivery', maxCount: 10 }
+]);
+
+const driverDropLocationUpload = multer({
+  storage: getS3Storage(req => `driverImages/${req.params.shipmentNumber || 'unknown'}/dropLocation`),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'podImages', maxCount: 10 },
+  { name: 'loadedTruckImages', maxCount: 10 },
+  { name: 'dropLocationImages', maxCount: 10 },
+  { name: 'emptyTruckImages', maxCount: 10 }
+]);
 
 const chatFileFilter = (req, file, cb) => {
   const allowed = /jpeg|jpg|png|pdf/;
@@ -128,7 +143,7 @@ const chatFileFilter = (req, file, cb) => {
 const chatFileUpload = multer({
   storage: getS3Storage(() => `chatFiles`),
   fileFilter: chatFileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 } // 20MB limit for chat files
+  limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
 const getS3Url = (key) => {
@@ -160,6 +175,7 @@ export {
   driverPickupUpload,
   driverLoadedUpload,
   driverPODUpload,
+  driverDropLocationUpload,
   getS3Url,
   chatFileUpload 
 };

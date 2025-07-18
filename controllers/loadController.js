@@ -3,11 +3,7 @@ import Bid from '../models/bidModel.js';
 import mongoose from 'mongoose';
 import ShipperDriver from '../models/shipper_driverModel.js';
 import { sendEmail } from '../utils/sendEmail.js';
-import path from 'path';
-import fs from 'fs';
-import multer from 'multer';
 import Tracking from '../models/Tracking.js';
-import { proofOfDeliveryUpload } from '../middlewares/upload.js';
 
 // ✅ Shipper creates a new load
 export const createLoad = async (req, res, next) => {
@@ -174,10 +170,7 @@ export const getAvailableLoads = async (req, res, next) => {
 // ✅ Get loads by shipper
 export const getShipperLoads = async (req, res, next) => {
     try {
-        // Debug: Check user object
-        console.log('🔍 Debug - Full req.user object:', req.user);
-        console.log('🔍 Debug - User ID type:', typeof req.user?._id);
-        console.log('🔍 Debug - User ID value:', req.user?._id);
+        
         
         if (!req.user) {
             return res.status(400).json({
@@ -958,6 +951,17 @@ export const uploadPODImages = async (req, res, next) => {
         const { shipmentNumber } = req.params;
         const { notes, driverId } = req.body;
         
+        // Comprehensive debugging
+        console.log('🔍 POD Upload - Full request debug:', {
+            params: req.params,
+            body: req.body,
+            files: req.files,
+            headers: {
+                'content-type': req.headers['content-type'],
+                'content-length': req.headers['content-length']
+            }
+        });
+        
         // Use driverId from body if provided, otherwise use authenticated user
         const actualDriverId = driverId || (req.user ? req.user._id : null);
         
@@ -996,13 +1000,14 @@ export const uploadPODImages = async (req, res, next) => {
         });
 
         // Check if load status allows POD upload (case-insensitive)
-        if (load.status?.trim().toLowerCase() !== 'in transit') {
+        const allowedStatuses = ['in transit', 'pod_uploaded'];
+        if (!allowedStatuses.includes(load.status?.trim().toLowerCase())) {
             return res.status(400).json({
                 success: false,
-                message: 'Load must be in transit to upload POD images',
+                message: 'Load must be in transit or already have POD uploaded to add more POD images',
                 debug: {
                     currentStatus: load.status,
-                    expectedStatus: 'In Transit',
+                    allowedStatuses: allowedStatuses,
                     currentStatusTrimmed: load.status?.trim(),
                     currentStatusLower: load.status?.toLowerCase(),
                     loadId: load._id,
@@ -1012,10 +1017,43 @@ export const uploadPODImages = async (req, res, next) => {
         }
 
         // Handle files from req.files array
-        const files = req.files || [];
+        const files = req.files || {};
         
-        const podImages = files.filter(f => f.fieldname === 'podImages').map(f => f.path || f.location);
+        // Add debugging for files
+        console.log('📸 POD Upload - Files received:', {
+            filesType: typeof req.files,
+            filesIsArray: Array.isArray(req.files),
+            filesKeys: Object.keys(req.files || {}),
+            filesObject: req.files
+        });
+        
+        // Handle files from multer fields configuration
+        let podImages = [];
+        if (req.files && req.files.podImages) {
+            podImages = req.files.podImages.map(f => f.path || f.location);
+        } else if (req.files && req.files.pod) {
+            podImages = req.files.pod.map(f => f.path || f.location);
+        } else if (req.files && req.files.proofOfDelivery) {
+            podImages = req.files.proofOfDelivery.map(f => f.path || f.location);
+        } else if (Array.isArray(req.files)) {
+            // Fallback for .any() configuration
+            podImages = req.files.filter(f => {
+                const fieldname = f.fieldname?.toLowerCase();
+                return fieldname === 'podimages' || 
+                       fieldname === 'pod_images' || 
+                       fieldname === 'pod' ||
+                       fieldname === 'proofofdelivery' ||
+                       fieldname === 'proof_of_delivery';
+            }).map(f => f.path || f.location);
+        }
+        
         const deliveryNotes = req.body.deliveryNotes || '';
+
+        console.log('📸 POD Upload - Processed podImages:', {
+            podImagesCount: podImages.length,
+            podImagesPaths: podImages,
+            allFieldNames: Array.isArray(req.files) ? req.files.map(f => f.fieldname) : Object.keys(req.files || {})
+        });
 
         // Update load with POD images
         const updatedLoad = await Load.findOneAndUpdate(
@@ -1074,6 +1112,167 @@ export const uploadPODImages = async (req, res, next) => {
     }
 };
 
+// ✅ Upload drop location images (POD, loaded truck, drop location, empty truck)
+export const uploadDropLocationImages = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { notes, driverId } = req.body;
+        
+        console.log('📸 Drop Location Upload - Request received:', {
+            shipmentNumber,
+            notes,
+            driverId,
+            files: req.files ? Object.keys(req.files) : 'No files'
+        });
+        
+        // Use driverId from body if provided, otherwise use authenticated user
+        const actualDriverId = driverId || (req.user ? req.user._id : null);
+        
+        if (!actualDriverId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Driver ID is required'
+            });
+        }
+
+        const load = await Load.findOne({ shipmentNumber });
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Check if driver is assigned to this load
+        if (load.assignedTo?.toString() !== actualDriverId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to upload images for this load'
+            });
+        }
+
+        // Check if load status allows drop location image upload
+        const allowedStatuses = ['In Transit', 'POD_uploaded'];
+        if (!allowedStatuses.includes(load.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Load status '${load.status}' does not allow drop location image upload. Allowed statuses: ${allowedStatuses.join(', ')}`
+            });
+        }
+
+        // Handle files from multer fields configuration
+        const files = req.files || {};
+        
+        // Process different types of images
+        const podImages = files.podImages ? files.podImages.map(f => f.path || f.location) : [];
+        const loadedTruckImages = files.loadedTruckImages ? files.loadedTruckImages.map(f => f.path || f.location) : [];
+        const dropLocationImages = files.dropLocationImages ? files.dropLocationImages.map(f => f.path || f.location) : [];
+        const emptyTruckImages = files.emptyTruckImages ? files.emptyTruckImages.map(f => f.path || f.location) : [];
+
+        // Validate that at least some images are uploaded
+        const totalImages = podImages.length + loadedTruckImages.length + dropLocationImages.length + emptyTruckImages.length;
+        if (totalImages === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one image is required (POD, loaded truck, drop location, or empty truck)'
+            });
+        }
+
+        console.log('📸 Drop Location Upload - Processed images:', {
+            podImages: podImages.length,
+            loadedTruckImages: loadedTruckImages.length,
+            dropLocationImages: dropLocationImages.length,
+            emptyTruckImages: emptyTruckImages.length,
+            totalImages
+        });
+
+        // Update load with drop location images and set status to Delivered
+        const updateData = {
+            'dropLocationImages.podImages': podImages,
+            'dropLocationImages.loadedTruckImages': loadedTruckImages,
+            'dropLocationImages.dropLocationImages': dropLocationImages,
+            'dropLocationImages.emptyTruckImages': emptyTruckImages,
+            'dropLocationImages.notes': notes || '',
+            dropLocationArrivalTime: new Date(),
+            dropLocationCompleted: true,
+            status: 'Delivered', // Automatically set status to Delivered
+            deliveryApproval: true // Mark as delivery approved
+        };
+
+        // Only update destination place if not already set
+        if (!load.destinationPlace.status) {
+            updateData['destinationPlace.status'] = 1;
+            updateData['destinationPlace.arrivedAt'] = new Date();
+            updateData['destinationPlace.location'] = `${load.destination.city}, ${load.destination.state}`;
+        }
+
+        const updatedLoad = await Load.findOneAndUpdate(
+            { shipmentNumber },
+            updateData,
+            { new: true }
+        ).populate('shipper', 'compName email');
+
+        // Update tracking status to delivered
+        try {
+            const tracking = await Tracking.findOne({ load: updatedLoad._id });
+            if (tracking) {
+                tracking.status = 'delivered';
+                tracking.endedAt = new Date();
+                await tracking.save();
+                console.log('✅ Tracking status updated to delivered for load:', updatedLoad._id);
+            } else {
+                console.log('⚠️ No tracking record found for load:', updatedLoad._id);
+            }
+        } catch (trackingError) {
+            console.error('❌ Error updating tracking status:', trackingError);
+        }
+
+        // Send notification to shipper
+        try {
+            const subject = `✅ Delivery Completed - Shipment ${shipmentNumber}`;
+            const html = `
+                <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto;">
+                    <h2 style="color: #28a745; text-align: center;">🎉 Delivery Successfully Completed!</h2>
+                    <p style="font-size: 16px; color: #333;">Your shipment ${shipmentNumber} has been <strong>automatically marked as DELIVERED</strong> after the driver uploaded drop location images:</p>
+                    <ul style="font-size: 14px; color: #555;">
+                        <li>POD images: ${podImages.length} images</li>
+                        <li>Loaded truck images: ${loadedTruckImages.length} images</li>
+                        <li>Drop location images: ${dropLocationImages.length} images</li>
+                        <li>Empty truck images: ${emptyTruckImages.length} images</li>
+                    </ul>
+                    <p style="font-size: 14px; color: #666;"><strong>Driver Notes:</strong> ${notes || 'No notes provided'}</p>
+                    <p style="font-size: 15px; color: #555;">The delivery has been automatically approved. Login to your <a href='https://vpl.com' style='color: #2a7ae2; text-decoration: underline;'>VPL account</a> to view the complete delivery details!</p>
+                </div>
+            `;
+            
+            await sendEmail({
+                to: load.shipper.email,
+                subject,
+                html
+            });
+        } catch (emailErr) {
+            console.error('❌ Error sending drop location notification:', emailErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Drop location images uploaded successfully and delivery marked as completed!',
+            load: updatedLoad,
+            uploadedImages: {
+                podImages: podImages.length,
+                loadedTruckImages: loadedTruckImages.length,
+                dropLocationImages: dropLocationImages.length,
+                emptyTruckImages: emptyTruckImages.length,
+                totalImages
+            },
+            deliveryStatus: 'Automatically marked as Delivered',
+            trackingStatus: 'Updated to delivered'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ✅ Get load images for driver/shipper
 export const getLoadImages = async (req, res, next) => {
     try {
@@ -1116,7 +1315,16 @@ export const getLoadImages = async (req, res, next) => {
             damageImages: load.damageImages || [],
             notes: load.notes || '',
             originPlace: load.originPlace,
-            destinationPlace: load.destinationPlace
+            destinationPlace: load.destinationPlace,
+            dropLocationImages: load.dropLocationImages || {
+                podImages: [],
+                loadedTruckImages: [],
+                dropLocationImages: [],
+                emptyTruckImages: [],
+                notes: ''
+            },
+            dropLocationArrivalTime: load.dropLocationArrivalTime,
+            dropLocationCompleted: load.dropLocationCompleted || false
         };
 
         res.status(200).json({
@@ -1576,6 +1784,7 @@ export const showAllImages = async (req, res, next) => {
                     damageImages: load.damageImages?.length || 0
                 },
                 delivery: {
+                    podImages: load.podImages?.length || 0,
                     proofOfDelivery: load.proofOfDelivery?.length || 0
                 }
             },

@@ -20,6 +20,7 @@ import {
     uploadPickupImages,
     uploadLoadedTruckImages,
     uploadPODImages,
+    uploadDropLocationImages,
     getLoadImages,
     testAuth,
     debugFileUpload,
@@ -37,7 +38,8 @@ import {
     shipperTruckerUpload,
     driverPickupUpload,
     driverLoadedUpload,
-    driverPODUpload
+    driverPODUpload,
+    driverDropLocationUpload
 } from '../middlewares/upload.js';
 
 const loadRouter = express.Router();
@@ -95,6 +97,7 @@ loadRouter.get('/:loadId/trip', isAuthenticatedUser, getTrackingDetailsBid);
 loadRouter.post('/shipment/:shipmentNumber/pickup-images', driverPickupUpload, uploadPickupImages);
 loadRouter.post('/shipment/:shipmentNumber/loaded-images', driverLoadedUpload, uploadLoadedTruckImages);
 loadRouter.post('/shipment/:shipmentNumber/pod-images', driverPODUpload, uploadPODImages);
+loadRouter.post('/shipment/:shipmentNumber/drop-location-images', driverDropLocationUpload, uploadDropLocationImages);
 loadRouter.get('/shipment/:shipmentNumber/images', getLoadImages);
 
 // Driver uploads proof images (legacy)

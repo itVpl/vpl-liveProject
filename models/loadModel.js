@@ -137,6 +137,17 @@ const loadSchema = new mongoose.Schema({
   sealImages: [{ type: String }], // Container seal images
   damageImages: [{ type: String }], // Any damage documentation
   notes: { type: String, default: '' }, // Driver notes
+  
+  // Drop location specific images (when driver reaches drop location)
+  dropLocationImages: {
+    podImages: [{ type: String }], // Proof of Delivery images at drop location
+    loadedTruckImages: [{ type: String }], // Loaded truck images at drop location
+    dropLocationImages: [{ type: String }], // Drop location facility/area images
+    emptyTruckImages: [{ type: String }], // Empty truck after unloading
+    notes: { type: String, default: '' } // Driver notes for drop location
+  },
+  dropLocationArrivalTime: { type: Date }, // When driver arrived at drop location
+  dropLocationCompleted: { type: Boolean, default: false } // Whether drop location process is completed
 });
 
 // Update the updatedAt field before saving
