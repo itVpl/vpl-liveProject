@@ -230,7 +230,9 @@ const loginUser = async (req, res) => {
                 phoneNo: user.phoneNo,
                 email: user.email,
                 status: user.status,
-                mc_dot_no: user.mc_dot_no
+                mc_dot_no: user.mc_dot_no,
+                token: token
+
             }
         });
 
