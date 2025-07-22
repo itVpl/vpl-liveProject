@@ -521,13 +521,15 @@ export const approveBidIntermediateAuto = async (req, res, next) => {
 export const getAcceptedBidsForTrucker = async (req, res, next) => {
     try {
         const bids = await Bid.find({ carrier: req.user._id, status: 'Accepted' })
-            .populate('load', 'origin destination weight commodity vehicleType status pickupDate deliveryDate')
-            .populate('load.shipper', 'compName mc_dot_no')
-            .sort({ createdAt: -1 });
+            .populate('load', 'shipmentNumber origin destination weight commodity vehicleType status pickupDate deliveryDate shipper compName poNumber bolNumber')
+            // .populate('load', 'origin destination weight commodity vehicleType status pickupDate deliveryDate')
+            // .populate('load.shipper', 'compName mc_dot_no')
+            // .sort({ createdAt: -1 });
 
         // Format the response to include shipment number and address details
         const formattedBids = bids.map(bid => ({
             bidId: bid._id,
+            loadId: bid.load._id,
             shipmentNumber: bid.load?.shipmentNumber,
             origin: {
                 addressLine1: bid.load?.origin?.addressLine1,
@@ -550,6 +552,8 @@ export const getAcceptedBidsForTrucker = async (req, res, next) => {
             deliveryDate: bid.load?.deliveryDate,
             status: bid.status,
             shipper: bid.load?.shipper,
+            poNumber: bid.load?.poNumber,
+            bolNumber: bid.load?.bolNumber,
         }));
 
         res.status(200).json({
