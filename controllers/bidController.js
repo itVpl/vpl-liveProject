@@ -521,39 +521,57 @@ export const approveBidIntermediateAuto = async (req, res, next) => {
 export const getAcceptedBidsForTrucker = async (req, res, next) => {
     try {
         const bids = await Bid.find({ carrier: req.user._id, status: 'Accepted' })
-            .populate('load', 'shipmentNumber origin destination weight commodity vehicleType status pickupDate deliveryDate shipper compName poNumber bolNumber')
-            // .populate('load', 'origin destination weight commodity vehicleType status pickupDate deliveryDate')
-            // .populate('load.shipper', 'compName mc_dot_no')
-            // .sort({ createdAt: -1 });
+            .populate('load', 'shipmentNumber origin destination weight commodity vehicleType status pickupDate deliveryDate shipper compName poNumber bolNumber driverName driverPhone vehicleNumber vehicleType')
+            .sort({ createdAt: -1 });
 
-        // Format the response to include shipment number and address details
-        const formattedBids = bids.map(bid => ({
-            bidId: bid._id,
-            loadId: bid.load._id,
-            shipmentNumber: bid.load?.shipmentNumber,
-            origin: {
-                addressLine1: bid.load?.origin?.addressLine1,
-                addressLine2: bid.load?.origin?.addressLine2,
-                city: bid.load?.origin?.city,
-                state: bid.load?.origin?.state,
-                zip: bid.load?.origin?.zip
-            },
-            destination: {
-                addressLine1: bid.load?.destination?.addressLine1,
-                addressLine2: bid.load?.destination?.addressLine2,
-                city: bid.load?.destination?.city,
-                state: bid.load?.destination?.state,
-                zip: bid.load?.destination?.zip
-            },
-            commodity: bid.load?.commodity,
-            vehicleType: bid.load?.vehicleType,
-            weight: bid.load?.weight,
-            pickupDate: bid.load?.pickupDate,
-            deliveryDate: bid.load?.deliveryDate,
-            status: bid.status,
-            shipper: bid.load?.shipper,
-            poNumber: bid.load?.poNumber,
-            bolNumber: bid.load?.bolNumber,
+        // For each bid, fetch its tracking
+        const formattedBids = await Promise.all(bids.map(async (bid) => {
+            let tracking = await Tracking.findOne({ load: bid.load._id });
+            return {
+                bidId: bid._id,
+                loadId: bid.load._id,
+                shipmentNumber: bid.load?.shipmentNumber,
+                origin: {
+                    addressLine1: bid.load?.origin?.addressLine1,
+                    addressLine2: bid.load?.origin?.addressLine2,
+                    city: bid.load?.origin?.city,
+                    state: bid.load?.origin?.state,
+                    zip: bid.load?.origin?.zip
+                },
+                destination: {
+                    addressLine1: bid.load?.destination?.addressLine1,
+                    addressLine2: bid.load?.destination?.addressLine2,
+                    city: bid.load?.destination?.city,
+                    state: bid.load?.destination?.state,
+                    zip: bid.load?.destination?.zip
+                },
+                commodity: bid.load?.commodity,
+                vehicleType: bid.load?.vehicleType,
+                weight: bid.load?.weight,
+                pickupDate: bid.load?.pickupDate,
+                deliveryDate: bid.load?.deliveryDate,
+                status: bid.status,
+                shipper: bid.load?.shipper,
+                poNumber: bid.load?.poNumber,
+                bolNumber: bid.load?.bolNumber,
+                driverName: bid.load?.driverName,
+                driverPhone: bid.load?.driverPhone,
+                vehicleNumber: bid.load?.vehicleNumber,
+                vehicleType: bid.load?.vehicleType,
+                tracking: tracking ? {
+                    driverName: tracking.driverName,
+                    status: tracking.status,
+                    currentLocation: tracking.currentLocation,
+                    vehicleNumber: tracking.vehicleNumber,
+                    shipmentNumber: tracking.shipmentNumber,
+                    startedAt: tracking.startedAt,
+                    endedAt: tracking.endedAt,
+                    originLatLng: tracking.originLatLng,
+                    destinationLatLng: tracking.destinationLatLng,
+                    shipperName: tracking.shipperName,
+                    truckerName: tracking.truckerName
+                } : null
+            };
         }));
 
         res.status(200).json({
