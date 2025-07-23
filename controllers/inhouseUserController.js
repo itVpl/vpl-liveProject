@@ -36,6 +36,7 @@ export const createEmployee = async (req, res) => {
       employeeName,
       aliasName,
       sex,
+      dateOfBirth,
       email,
       mobileNo,
       alternateNo,
@@ -70,6 +71,7 @@ export const createEmployee = async (req, res) => {
       employeeName,
       aliasName,
       sex,
+      dateOfBirth,
       email,
       mobileNo,
       alternateNo,
@@ -876,6 +878,68 @@ export const getNewJoiners = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error retrieving new joiners count',
+      error: error.message
+    });
+  }
+};
+
+// 🔹 Get this month birthdays
+export const getThisMonthBirthdays = async (req, res) => {
+  try {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // 1-12
+
+    console.log('🔍 Debug - Birthday filter:', {
+      currentDate,
+      currentMonth,
+      currentYear: currentDate.getFullYear()
+    });
+
+    // Find employees whose birthday month matches current month
+    const employees = await Employee.find({
+      $expr: {
+        $eq: [
+          { $month: { $dateFromString: { dateString: "$dateOfBirth" } } },
+          currentMonth
+        ]
+      }
+    }).select('empId employeeName department designation dateOfBirth email mobileNo');
+
+    // Sort by day of month
+    const sortedEmployees = employees.sort((a, b) => {
+      const dayA = new Date(a.dateOfBirth).getDate();
+      const dayB = new Date(b.dateOfBirth).getDate();
+      return dayA - dayB;
+    });
+
+    console.log('🔍 Debug - Birthday employees found:', sortedEmployees.length);
+
+    // Add today's birthdays flag
+    const today = currentDate.getDate();
+    const employeesWithTodayFlag = sortedEmployees.map(emp => {
+      const birthDay = new Date(emp.dateOfBirth).getDate();
+      return {
+        ...emp.toObject(),
+        isToday: birthDay === today,
+        daysUntilBirthday: birthDay >= today ? birthDay - today : (30 - today) + birthDay
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'This month birthdays retrieved successfully',
+      currentMonth: currentMonth,
+      currentYear: currentDate.getFullYear(),
+      totalBirthdays: employeesWithTodayFlag.length,
+      todayBirthdays: employeesWithTodayFlag.filter(emp => emp.isToday).length,
+      employees: employeesWithTodayFlag
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getThisMonthBirthdays:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving this month birthdays',
       error: error.message
     });
   }
