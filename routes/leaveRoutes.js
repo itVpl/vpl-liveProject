@@ -10,7 +10,8 @@ import {
   getLeaveBalance,
   applyLeaveWithBalance,
   getMyLeaveBalance,
-  updateLeaveBalance
+  updateLeaveBalance,
+  getCurrentMonthLeaves
 } from '../controllers/leaveController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
@@ -20,6 +21,7 @@ const router = express.Router();
 // 📅 Basic Leave Operations
 router.post('/apply', isAuthenticatedEmployee, applyLeave);
 router.get('/all', isAuthenticatedEmployee, isHRDepartment, getAllLeaves);
+router.get('/current-month', isAuthenticatedEmployee, isHRDepartment, getCurrentMonthLeaves);
 router.patch('/status/:id', isAuthenticatedEmployee, isHRDepartment, updateLeaveStatus);
 router.get('/emp/:empId', isAuthenticatedEmployee, isHRDepartment, getLeavesByEmployee);
 router.get('/my', isAuthenticatedEmployee, getMyLeaves);

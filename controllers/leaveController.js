@@ -533,3 +533,78 @@ export const updateLeaveBalance = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// 🔹 Get current month leaves (HR)
+export const getCurrentMonthLeaves = async (req, res) => {
+  try {
+    const currentDate = new Date();
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    console.log('🔍 Debug - Current month filter:', {
+      startOfMonth,
+      endOfMonth,
+      currentMonth: currentDate.getMonth() + 1,
+      currentYear: currentDate.getFullYear()
+    });
+
+    const leaves = await LeaveRequest.aggregate([
+      {
+        $match: {
+          appliedAt: {
+            $gte: startOfMonth,
+            $lte: endOfMonth
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: 'empId',
+          foreignField: 'empId',
+          as: 'employee'
+        }
+      },
+      {
+        $unwind: {
+          path: '$employee',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          empName: '$employee.employeeName',
+          department: '$employee.department',
+          role: '$employee.role'
+        }
+      },
+      {
+        $project: {
+          employee: 0
+        }
+      },
+      {
+        $sort: { appliedAt: -1 }
+      }
+    ]);
+
+    console.log('🔍 Debug - Current month leaves found:', leaves.length);
+
+    res.status(200).json({
+      success: true,
+      message: 'Current month leaves retrieved successfully',
+      currentMonth: currentDate.getMonth() + 1,
+      currentYear: currentDate.getFullYear(),
+      total: leaves.length,
+      leaves
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getCurrentMonthLeaves:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving current month leaves',
+      error: error.message
+    });
+  }
+};
