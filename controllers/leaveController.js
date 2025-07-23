@@ -1,21 +1,29 @@
 import { LeaveRequest } from '../models/leaveModel.js';
 import { Employee } from '../models/inhouseUserModel.js';
 import { startOfMonth, endOfMonth, differenceInDays, addDays } from 'date-fns';
+import moment from 'moment-timezone';
 
 // 🔹 Apply for Leave
 export const applyLeave = async (req, res) => {
   try {
-    const { empId, leaveType, fromDate, toDate, reason } = req.body;
+    const { empId, leaveType, fromDate, toDate, reason, timezone } = req.body;
+
+    // Default timezone for US shift
+    const userTimezone = timezone || 'America/New_York';
+
+    // Convert dates to user's timezone
+    const fromDateTz = moment.tz(fromDate, userTimezone).startOf('day').toDate();
+    const toDateTz = moment.tz(toDate, userTimezone).endOf('day').toDate();
 
     // ✅ 1. Validate Dates
-    if (new Date(fromDate) > new Date(toDate)) {
+    if (fromDateTz > toDateTz) {
       return res.status(400).json({
         success: false,
         message: "From Date must be before To Date"
       });
     }
 
-    if (new Date(fromDate) < new Date().setHours(0, 0, 0, 0)) {
+    if (fromDateTz < moment.tz(userTimezone).startOf('day').toDate()) {
       return res.status(400).json({
         success: false,
         message: "Cannot apply leave for past dates"
@@ -28,8 +36,8 @@ export const applyLeave = async (req, res) => {
       status: { $ne: 'rejected' },
       $or: [
         {
-          fromDate: { $lte: new Date(toDate) },
-          toDate: { $gte: new Date(fromDate) }
+          fromDate: { $lte: toDateTz },
+          toDate: { $gte: fromDateTz }
         }
       ]
     });
@@ -42,12 +50,12 @@ export const applyLeave = async (req, res) => {
     }
 
     // ✅ 3. totalDays calculation
-    const totalDays = (new Date(toDate) - new Date(fromDate)) / (1000 * 60 * 60 * 24) + 1;
+    const totalDays = (toDateTz - fromDateTz) / (1000 * 60 * 60 * 24) + 1;
 
     // ✅ 4. Restrict casual/sick to only 1 leave per month
     if (leaveType === "casual" || leaveType === "sick") {
-      const start = startOfMonth(new Date());
-      const end = endOfMonth(new Date());
+      const start = moment.tz(userTimezone).startOf('month').toDate();
+      const end = moment.tz(userTimezone).endOf('month').toDate();
 
       const existingLeave = await LeaveRequest.findOne({
         empId,
@@ -68,8 +76,8 @@ export const applyLeave = async (req, res) => {
     const leave = await LeaveRequest.create({
       empId,
       leaveType,
-      fromDate,
-      toDate,
+      fromDate: fromDateTz,
+      toDate: toDateTz,
       reason,
       totalDays
     });
@@ -107,7 +115,38 @@ export const updateLeaveStatus = async (req, res) => {
 // 🔹 Get all leaves (HR)
 export const getAllLeaves = async (req, res) => {
   try {
-    const leaves = await LeaveRequest.find().sort({ appliedAt: -1 });
+    const leaves = await LeaveRequest.aggregate([
+      {
+        $lookup: {
+          from: 'employees', // Employee collection name
+          localField: 'empId',
+          foreignField: 'empId',
+          as: 'employee'
+        }
+      },
+      {
+        $unwind: {
+          path: '$employee',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          empName: '$employee.employeeName',
+          department: '$employee.department',
+          role: '$employee.role'
+        }
+      },
+      {
+        $project: {
+          employee: 0 // Remove the employee object, keep only the fields we need
+        }
+      },
+      {
+        $sort: { appliedAt: -1 }
+      }
+    ]);
+    
     res.status(200).json({ success: true, leaves });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
