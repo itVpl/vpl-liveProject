@@ -20,7 +20,8 @@ import {
   createMeeting,
   getMeetings,
   getMeetingsByEmpId,
-  unassignModulesFromMaster
+  unassignModulesFromMaster,
+  getNewJoiners
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -39,6 +40,9 @@ router.post('/', employeeUpload.fields([
 
 // 🔹 Get All Employees
 router.get('/', getAllEmployees);
+
+// 🔹 Get new joiners count (last 15 days)
+router.get('/new-joiners', isAuthenticatedEmployee, isHRDepartment, getNewJoiners);
 
 // 🔹 Get Single Employee by ID
 router.get('/:empId', getEmployeeById);

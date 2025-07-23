@@ -840,6 +840,47 @@ export const unassignModulesFromMaster = async (req, res) => {
   }
 };
 
+// 🔹 Get new joiners count (last 15 days)
+export const getNewJoiners = async (req, res) => {
+  try {
+    const currentDate = new Date();
+    const fifteenDaysAgo = new Date(currentDate.getTime() - (15 * 24 * 60 * 60 * 1000));
+
+    console.log('🔍 Debug - New joiners filter:', {
+      currentDate,
+      fifteenDaysAgo,
+      daysBack: 15
+    });
+
+    const newJoiners = await Employee.find({
+      dateOfJoining: {
+        $gte: fifteenDaysAgo,
+        $lte: currentDate
+      }
+    }).select('empId employeeName department designation dateOfJoining');
+
+    console.log('🔍 Debug - New joiners found:', newJoiners.length);
+
+    res.status(200).json({
+      success: true,
+      message: 'New joiners count retrieved successfully',
+      totalNewJoiners: newJoiners.length,
+      daysBack: 15,
+      fromDate: fifteenDaysAgo,
+      toDate: currentDate,
+      newJoiners: newJoiners
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getNewJoiners:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving new joiners count',
+      error: error.message
+    });
+  }
+};
+
 
 
 
