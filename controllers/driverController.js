@@ -5,31 +5,8 @@ import jwt from "jsonwebtoken";
 import { Load } from "../models/loadModel.js";
 import multer from "multer";
 import LoadImage from '../models/loadImageModel.js';
-
-// export const registerDriver = async (req, res, next) => {
-//     try {
-//         const {
-//             fullName, mcDot, phone, email, driverLicense, gender,
-//             country, state, city, zipCode, fullAddress, password
-//         } = req.body;
-
-//         const existing = await Driver.findOne({ email });
-//         if (existing) return res.status(400).json({ success: false, message: 'Email already registered' });
-
-//         const hashedPassword = await bcrypt.hash(password, 10);
-
-//         const driver = new Driver({
-//             fullName, mcDot, phone, email, driverLicense, gender,
-//             country, state, city, zipCode, fullAddress,
-//             password: hashedPassword
-//         });
-
-//         await driver.save();
-//         res.status(201).json({ success: true, message: 'Driver registered successfully', driver });
-//     } catch (err) {
-//         next(err);
-//     }
-// };
+import { arrivalUpload } from '../middlewares/upload.js';
+import { driverRegisterUpload } from '../middlewares/upload.js';
 
 
 export const registerDriver = async (req, res, next) => {
@@ -51,11 +28,25 @@ export const registerDriver = async (req, res, next) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        // Handle file uploads
+        let driverPhotoPath = '';
+        let cdlDocumentPath = '';
+        if (req.files) {
+            if (req.files.driverPhoto && req.files.driverPhoto[0]) {
+                driverPhotoPath = req.files.driverPhoto[0].location || req.files.driverPhoto[0].path;
+            }
+            if (req.files.cdlDocument && req.files.cdlDocument[0]) {
+                cdlDocumentPath = req.files.cdlDocument[0].location || req.files.cdlDocument[0].path;
+            }
+        }
+
         const driver = new Driver({
             fullName, mcDot, phone, email, driverLicense, gender,
             country, state, city, zipCode, fullAddress,
             password: hashedPassword,
-            truckerId: trucker._id  // 💥 Associate driver with trucker
+            truckerId: trucker._id,  // 💥 Associate driver with trucker
+            driverPhoto: driverPhotoPath,
+            cdlDocument: cdlDocumentPath
         });
 
         await driver.save();

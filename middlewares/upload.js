@@ -146,6 +146,15 @@ const chatFileUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
+const driverRegisterUpload = multer({
+  storage: getS3Storage(req => `driverRegisterUploads/${req.body.mcDot || 'unknown'}`),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'driverPhoto', maxCount: 1 },
+  { name: 'cdlDocument', maxCount: 1 }
+]);
+
 const getS3Url = (key) => {
   if (!key || !isS3Configured) return '';
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
@@ -177,5 +186,6 @@ export {
   driverPODUpload,
   driverDropLocationUpload,
   getS3Url,
-  chatFileUpload 
+  chatFileUpload,
+  driverRegisterUpload
 };

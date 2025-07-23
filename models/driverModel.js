@@ -15,7 +15,9 @@ const driverSchema = new mongoose.Schema({
     password: { type: String, required: true }, // hashed
     truckerId: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipperDriver', required: true }, // 🔥 new
     createdAt: { type: Date, default: Date.now },
-    isLoggedIn: { type: Boolean, default: true } // Track login status
+    isLoggedIn: { type: Boolean, default: true }, // Track login status
+    driverPhoto: { type: String, default: '' }, // URL or path to driver photo
+    cdlDocument: { type: String, default: '' } // URL or path to CDL document
   });
 
 const Driver = mongoose.model('Driver', driverSchema);

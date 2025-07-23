@@ -61,8 +61,7 @@ import {
   isAuthenticatedUser
 } from '../middlewares/auth.js';
 
-// Remove upload and arrivalUpload imports for now
-// import upload, { arrivalUpload } from '../middlewares/upload.js';
+import { driverRegisterUpload } from '../middlewares/upload.js';
 
 const driverRouter = express.Router();
 
@@ -71,7 +70,7 @@ driverRouter.post('/login', loginDriver);
 driverRouter.get('/details/:driverId', getDriverDetailsById);
 
 // ✅ Truckers only
-driverRouter.post('/register', isAuthenticatedUser, registerDriver);
+driverRouter.post('/register', isAuthenticatedUser, driverRegisterUpload, registerDriver);
 driverRouter.get('/my-drivers', isAuthenticatedUser, getDriversByTrucker);
 driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
 
