@@ -11,7 +11,8 @@ import {
   getShipperTruckersByEmployee,
   getAllUsersWithEmployeeInfo,
   addTruckerByCMTEmployee,
-  getTruckersByCMTEmployee
+  getTruckersByCMTEmployee,
+  getTodayTruckerCount
 } from '../controllers/shipper_driverController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -44,5 +45,9 @@ router.post('/cmt/add-trucker', isAuthenticatedEmployee, shipperTruckerUpload.si
 // 🔥 NEW: Get Trucker details by CMT Employee's empId
 router.get('/cmt/truckers', isAuthenticatedEmployee, getTruckersByCMTEmployee); // Get current user's truckers
 router.get('/cmt/truckers/:empId', isAuthenticatedEmployee, getTruckersByCMTEmployee); // Get specific employee's truckers
+
+// 🔥 NEW: Get Today's Trucker Count by CMT Employee
+router.get('/cmt/today-count', isAuthenticatedEmployee, getTodayTruckerCount); // Get current user's today count
+router.get('/cmt/today-count/:empId', isAuthenticatedEmployee, getTodayTruckerCount); // Get specific employee's today count
 
 export default router;

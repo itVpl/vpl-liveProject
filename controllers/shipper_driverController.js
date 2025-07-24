@@ -1024,6 +1024,131 @@ const getTruckersByCMTEmployee = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Get Today's Trucker Count by CMT Employee
+const getTodayTruckerCount = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user belongs to CMT department
+        if (inhouseUser.department !== 'CMT') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only CMT department employees can access this data'
+            });
+        }
+
+        // ✅ 3. Get empId from params or use current user's empId
+        const { empId } = req.params;
+        const targetEmpId = empId || inhouseUser.empId;
+
+        // ✅ 4. Check if user is trying to access other employee's data
+        if (empId && empId !== inhouseUser.empId) {
+            // Only allow if user is admin or superadmin
+            if (inhouseUser.role !== 'admin' && inhouseUser.role !== 'superadmin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You can only view your own trucker count'
+                });
+            }
+        }
+
+        // ✅ 5. Get today's date range (start and end of day)
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+        // ✅ 6. Find truckers added today by this employee
+        const todayTruckers = await ShipperDriver.find({
+            'addedBy.empId': targetEmpId,
+            userType: 'trucker',
+            createdAt: {
+                $gte: startOfDay,
+                $lt: endOfDay
+            }
+        }).select('compName mc_dot_no email phoneNo status createdAt').sort({ createdAt: -1 });
+
+        // ✅ 7. Get employee details
+        const employeeDetails = {
+            empId: targetEmpId,
+            employeeName: inhouseUser.employeeName,
+            department: inhouseUser.department
+        };
+
+        // ✅ 8. Calculate today's statistics
+        const todayCount = todayTruckers.length;
+        const todayApproved = todayTruckers.filter(t => t.status === 'approved').length;
+        const todayPending = todayTruckers.filter(t => t.status === 'pending').length;
+        const todayRejected = todayTruckers.filter(t => t.status === 'rejected').length;
+
+        // ✅ 9. Get total truckers count (all time) for comparison
+        const totalTruckers = await ShipperDriver.countDocuments({
+            'addedBy.empId': targetEmpId,
+            userType: 'trucker'
+        });
+
+        // ✅ 10. Get this week's count for trend analysis
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay()); // Start of current week (Sunday)
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const weekTruckers = await ShipperDriver.countDocuments({
+            'addedBy.empId': targetEmpId,
+            userType: 'trucker',
+            createdAt: {
+                $gte: startOfWeek,
+                $lt: endOfDay
+            }
+        });
+
+        // ✅ 11. Success response
+        res.status(200).json({
+            success: true,
+            message: `Today's trucker count for ${employeeDetails.employeeName}`,
+            date: {
+                today: today.toISOString().split('T')[0], // YYYY-MM-DD format
+                startOfDay: startOfDay.toISOString(),
+                endOfDay: endOfDay.toISOString()
+            },
+            employee: employeeDetails,
+            todayStats: {
+                totalAdded: todayCount,
+                approved: todayApproved,
+                pending: todayPending,
+                rejected: todayRejected
+            },
+            comparison: {
+                totalAllTime: totalTruckers,
+                thisWeek: weekTruckers,
+                todayVsWeek: todayCount,
+                todayVsTotal: todayCount
+            },
+            todayTruckers: todayTruckers.map(trucker => ({
+                compName: trucker.compName,
+                mc_dot_no: trucker.mc_dot_no,
+                email: trucker.email,
+                phoneNo: trucker.phoneNo,
+                status: trucker.status,
+                addedAt: trucker.createdAt
+            }))
+        });
+
+    } catch (err) {
+        console.error('❌ Error getting today\'s trucker count:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -1037,4 +1162,5 @@ export {
     getAllUsersWithEmployeeInfo,
     addTruckerByCMTEmployee,
     getTruckersByCMTEmployee,
+    getTodayTruckerCount,
 };
