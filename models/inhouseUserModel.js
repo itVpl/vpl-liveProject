@@ -12,7 +12,7 @@ const employeeSchema = new mongoose.Schema({
   alternateNo: { type: String },
   emergencyNo: { type: String },
 
-  department: { type: String, required: true },
+  department: { type: String, enum:['IT', 'HR', 'CMT', 'Sales','Finance',], required: true },
   designation: { type: String, required: true },
   dateOfJoining: { type: Date, required: true },
 
