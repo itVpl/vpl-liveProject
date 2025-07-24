@@ -207,6 +207,7 @@ export const getFilteredCallRecords = async (req, res) => {
   try {
     const { callerName, calleeName, from, to, pageSize } = req.query;
     console.log('🔄 Getting filtered 8x8 call records...');
+    console.log('🔍 Query parameters:', { callerName, calleeName, from, to, pageSize });
 
     // Set current day range in New York timezone if not passed
     const nowNY = DateTime.now().setZone('America/New_York');
@@ -219,7 +220,7 @@ export const getFilteredCallRecords = async (req, res) => {
       qs.stringify({
         grant_type: 'password',
         username: 'EastonMPT',
-        password: 'Easton@18'
+        password: 'VPLeaston@18'
       }),
       {
         headers: {
@@ -250,16 +251,21 @@ export const getFilteredCallRecords = async (req, res) => {
     );
 
     let records = dataRes.data.data || [];
+    console.log(`✅ Total records fetched: ${records.length}`);
 
     // Optional Filtering by callerName or calleeName
     if (callerName || calleeName) {
       const caller = callerName?.toLowerCase();
       const callee = calleeName?.toLowerCase();
+      console.log('🔍 Filtering by:', { caller, callee });
+      
       records = records.filter(r => {
         const callerMatch = caller ? (r.callerName || '').toLowerCase().includes(caller) : false;
         const calleeMatch = callee ? (r.calleeName || '').toLowerCase().includes(callee) : false;
         return callerMatch || calleeMatch;
       });
+      
+      console.log(`✅ Filtered records: ${records.length}`);
     }
 
     res.status(200).json({
