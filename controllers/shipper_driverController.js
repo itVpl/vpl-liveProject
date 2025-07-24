@@ -931,6 +931,99 @@ const addTruckerByCMTEmployee = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Get Trucker details by CMT Employee's empId
+const getTruckersByCMTEmployee = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user belongs to CMT department
+        if (inhouseUser.department !== 'CMT') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only CMT department employees can access this data'
+            });
+        }
+
+        // ✅ 3. Get empId from params or use current user's empId
+        const { empId } = req.params;
+        const targetEmpId = empId || inhouseUser.empId;
+
+        // ✅ 4. Check if user is trying to access other employee's data
+        if (empId && empId !== inhouseUser.empId) {
+            // Only allow if user is admin or superadmin
+            if (inhouseUser.role !== 'admin' && inhouseUser.role !== 'superadmin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You can only view truckers added by yourself'
+                });
+            }
+        }
+
+        // ✅ 5. Find all truckers added by this employee
+        const truckers = await ShipperDriver.find({
+            'addedBy.empId': targetEmpId,
+            userType: 'trucker'
+        }).select('-password').sort({ createdAt: -1 });
+
+        // ✅ 6. Get employee details
+        const employeeDetails = {
+            empId: targetEmpId,
+            employeeName: truckers.length > 0 ? truckers[0].addedBy.employeeName : inhouseUser.employeeName,
+            department: truckers.length > 0 ? truckers[0].addedBy.department : inhouseUser.department
+        };
+
+        // ✅ 7. Calculate statistics
+        const totalTruckers = truckers.length;
+        const approvedTruckers = truckers.filter(t => t.status === 'approved').length;
+        const pendingTruckers = truckers.filter(t => t.status === 'pending').length;
+        const rejectedTruckers = truckers.filter(t => t.status === 'rejected').length;
+
+        // ✅ 8. Success response
+        res.status(200).json({
+            success: true,
+            message: `Trucker details retrieved for CMT employee: ${employeeDetails.employeeName}`,
+            employee: employeeDetails,
+            statistics: {
+                totalTruckers,
+                approvedTruckers,
+                pendingTruckers,
+                rejectedTruckers
+            },
+            truckers: truckers.map(trucker => ({
+                userId: trucker.userId,
+                compName: trucker.compName,
+                mc_dot_no: trucker.mc_dot_no,
+                email: trucker.email,
+                phoneNo: trucker.phoneNo,
+                status: trucker.status,
+                carrierType: trucker.carrierType,
+                fleetsize: trucker.fleetsize,
+                country: trucker.country,
+                state: trucker.state,
+                city: trucker.city,
+                addedAt: trucker.createdAt,
+                statusUpdatedAt: trucker.statusUpdatedAt,
+                statusReason: trucker.statusReason
+            }))
+        });
+
+    } catch (err) {
+        console.error('❌ Error getting truckers by CMT employee:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -943,4 +1036,5 @@ export {
     getShipperTruckersByEmployee,
     getAllUsersWithEmployeeInfo,
     addTruckerByCMTEmployee,
+    getTruckersByCMTEmployee,
 };

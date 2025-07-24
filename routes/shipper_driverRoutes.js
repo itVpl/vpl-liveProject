@@ -10,7 +10,8 @@ import {
   addShipperTruckerByEmployee,
   getShipperTruckersByEmployee,
   getAllUsersWithEmployeeInfo,
-  addTruckerByCMTEmployee
+  addTruckerByCMTEmployee,
+  getTruckersByCMTEmployee
 } from '../controllers/shipper_driverController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -39,5 +40,9 @@ router.get('/employee/all-with-info', isAuthenticatedEmployee, getAllUsersWithEm
 
 // 🔥 NEW: CMT Department Employee can add Trucker only
 router.post('/cmt/add-trucker', isAuthenticatedEmployee, shipperTruckerUpload.single('docUpload'), addTruckerByCMTEmployee);
+
+// 🔥 NEW: Get Trucker details by CMT Employee's empId
+router.get('/cmt/truckers', isAuthenticatedEmployee, getTruckersByCMTEmployee); // Get current user's truckers
+router.get('/cmt/truckers/:empId', isAuthenticatedEmployee, getTruckersByCMTEmployee); // Get specific employee's truckers
 
 export default router;
