@@ -6,7 +6,7 @@ const employeeSchema = new mongoose.Schema({
   employeeName: { type: String, required: true },
   aliasName: { type: String },
   sex: { type: String, enum: ['Male', 'Female', 'Other'], required: true },
-  dateOfBirth: { type: Date, required: true },
+  dateOfBirth: { type: Date },
   email: { type: String, required: true, unique: true },
   mobileNo: { type: String, required: true },
   alternateNo: { type: String },
@@ -56,13 +56,12 @@ const employeeSchema = new mongoose.Schema({
 
   // 📅 Leave Balance Tracking
   leaveBalance: {
-    casual: { type: Number, default: 12 }, // 12 casual leaves per year
-    sick: { type: Number, default: 15 },   // 15 sick leaves per year
-    earned: { type: Number, default: 0 },  // Earned leaves (accrued)
-    total: { type: Number, default: 27 }   // Total available leaves
+    casual: { type: Number, default: 12 }, 
+    sick: { type: Number, default: 15 },   
+    earned: { type: Number, default: 0 },  
+    total: { type: Number, default: 27 }  
   },
   
-  // 📊 Leave Year Configuration
   leaveYear: {
     startDate: { type: Date, default: Date.now },
     endDate: { type: Date },

@@ -50,6 +50,45 @@ export const createEmployee = async (req, res) => {
       password
     } = req.body;
 
+    // Helper function to parse date string to Date object
+    const parseDate = (dateString) => {
+      if (!dateString) return null;
+      
+      // Handle DD-MM-YYYY format
+      if (typeof dateString === 'string' && dateString.includes('-')) {
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+          // Assuming DD-MM-YYYY format
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+          const year = parseInt(parts[2]);
+          return new Date(year, month, day);
+        }
+      }
+      
+      // Try parsing as ISO string or other formats
+      const parsed = new Date(dateString);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    // Parse date fields
+    const parsedDateOfBirth = parseDate(dateOfBirth);
+    const parsedDateOfJoining = parseDate(dateOfJoining);
+
+    if (!parsedDateOfBirth) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid dateOfBirth format. Expected DD-MM-YYYY format.' 
+      });
+    }
+
+    if (!parsedDateOfJoining) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid dateOfJoining format. Expected DD-MM-YYYY format.' 
+      });
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -71,14 +110,14 @@ export const createEmployee = async (req, res) => {
       employeeName,
       aliasName,
       sex,
-      dateOfBirth,
+      dateOfBirth: parsedDateOfBirth,
       email,
       mobileNo,
       alternateNo,
       emergencyNo,
       department,
       designation,
-      dateOfJoining,
+      dateOfJoining: parsedDateOfJoining,
       identityDocs: {
         panCard: pancardPath,
         aadharCard: aadharcardPath,
@@ -188,6 +227,27 @@ export const updateEmployee = async (req, res) => {
 
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
+    // Helper function to parse date string to Date object
+    const parseDate = (dateString) => {
+      if (!dateString) return null;
+      
+      // Handle DD-MM-YYYY format
+      if (typeof dateString === 'string' && dateString.includes('-')) {
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+          // Assuming DD-MM-YYYY format
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+          const year = parseInt(parts[2]);
+          return new Date(year, month, day);
+        }
+      }
+      
+      // Try parsing as ISO string or other formats
+      const parsed = new Date(dateString);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    };
+
     // Update only provided fields
     Object.keys(req.body).forEach(key => {
       if (key === 'password') {
@@ -196,6 +256,14 @@ export const updateEmployee = async (req, res) => {
       } else if (key === 'empId') {
         employee.empId = req.body.empId;
         employee.agentIds = [req.body.empId]; // Sync agentIds with empId
+      } else if (key === 'dateOfBirth' || key === 'dateOfJoining') {
+        // Parse date fields properly
+        const parsedDate = parseDate(req.body[key]);
+        if (parsedDate) {
+          employee[key] = parsedDate;
+        } else {
+          throw new Error(`Invalid date format for ${key}. Expected DD-MM-YYYY format.`);
+        }
       } else {
         employee[key] = req.body[key];
       }

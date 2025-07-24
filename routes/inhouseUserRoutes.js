@@ -21,7 +21,8 @@ import {
   getMeetings,
   getMeetingsByEmpId,
   unassignModulesFromMaster,
-  getNewJoiners
+  getNewJoiners,
+  getThisMonthBirthdays
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -43,6 +44,9 @@ router.get('/', getAllEmployees);
 
 // 🔹 Get new joiners count (last 15 days)
 router.get('/new-joiners', isAuthenticatedEmployee, isHRDepartment, getNewJoiners);
+
+// 🔹 Get this month birthdays
+router.get('/birthdays', isAuthenticatedEmployee, isHRDepartment, getThisMonthBirthdays);
 
 // 🔹 Get Single Employee by ID
 router.get('/:empId', getEmployeeById);
