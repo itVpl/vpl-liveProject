@@ -770,6 +770,167 @@ const getAllUsersWithEmployeeInfo = async (req, res) => {
     }
 };
 
+// 🔥 NEW: CMT Department Inhouse User can add Trucker only
+const addTruckerByCMTEmployee = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user belongs to CMT department
+        if (inhouseUser.department !== 'CMT') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only CMT department employees can add truckers'
+            });
+        }
+
+        // ✅ 3. Extract trucker data from request body
+        const {
+            compName,
+            mc_dot_no,
+            carrierType,
+            fleetsize,
+            compAdd,
+            country,
+            state,
+            city,
+            zipcode,
+            phoneNo,
+            email,
+            password
+        } = req.body;
+
+        // ✅ 4. Validate required fields
+        if (!compName || !phoneNo || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Company name, phone number, email, and password are required',
+                errors: {
+                    compName: !compName ? 'Company name is required' : null,
+                    phoneNo: !phoneNo ? 'Phone number is required' : null,
+                    email: !email ? 'Email is required' : null,
+                    password: !password ? 'Password is required' : null
+                }
+            });
+        }
+
+        // ✅ 5. Check if email already exists
+        const existingEmail = await ShipperDriver.findOne({ email: email.toLowerCase() });
+        if (existingEmail) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email already registered',
+                errors: {
+                    email: 'This email is already in use'
+                }
+            });
+        }
+
+        // ✅ 6. Check if phone already exists
+        const existingPhone = await ShipperDriver.findOne({ phoneNo });
+        if (existingPhone) {
+            return res.status(400).json({
+                success: false,
+                message: 'Phone number already registered',
+                errors: {
+                    phoneNo: 'This phone number is already in use'
+                }
+            });
+        }
+
+        // ✅ 7. Hash password
+        const hashedPassword = await hashPassword(password);
+
+        // ✅ 8. Handle file upload for document
+        let docUploadPath = '';
+        if (req.file) {
+            docUploadPath = normalizeShipperTruckerPath(req.file.path);
+        }
+
+        // ✅ 9. Create new trucker record
+        const newTrucker = new ShipperDriver({
+            userType: 'trucker', // Always set as trucker
+            status: 'approved', // Auto-approve when added by CMT employee
+            statusUpdatedBy: inhouseUser.empId,
+            statusUpdatedAt: new Date(),
+            statusReason: 'Approved by CMT department',
+            addedBy: {
+                empId: inhouseUser.empId,
+                employeeName: inhouseUser.employeeName,
+                department: inhouseUser.department
+            },
+            agentIds: [inhouseUser.empId], // Add the CMT employee as agent
+            compName,
+            mc_dot_no,
+            carrierType,
+            fleetsize: fleetsize ? parseInt(fleetsize) : undefined,
+            compAdd,
+            country,
+            state,
+            city,
+            zipcode,
+            phoneNo,
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            docUpload: docUploadPath
+        });
+
+        await newTrucker.save();
+
+        // ✅ 10. Send approval email (since auto-approved)
+        try {
+            const emailSubject = `🎉 Account Approved - ${compName}`;
+            const emailMessage = generateStatusUpdateEmail(
+                compName, 
+                'trucker', 
+                'approved', 
+                email, 
+                'Account approved by CMT department - ' + inhouseUser.employeeName
+            );
+
+            await sendEmail({
+                to: email,
+                subject: emailSubject,
+                html: emailMessage,
+            });
+
+            console.log('📧 Approval email sent to:', email);
+        } catch (emailError) {
+            console.error('❌ Email sending failed:', emailError);
+            // Don't fail the operation if email fails
+        }
+
+        // ✅ 11. Success response
+        res.status(201).json({
+            success: true,
+            message: 'Trucker added successfully by CMT employee',
+            trucker: {
+                userId: newTrucker.userId,
+                compName: newTrucker.compName,
+                mc_dot_no: newTrucker.mc_dot_no,
+                email: newTrucker.email,
+                phoneNo: newTrucker.phoneNo,
+                status: newTrucker.status,
+                addedBy: newTrucker.addedBy
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Error adding trucker by CMT employee:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -781,4 +942,5 @@ export {
     addShipperTruckerByEmployee,
     getShipperTruckersByEmployee,
     getAllUsersWithEmployeeInfo,
+    addTruckerByCMTEmployee,
 };

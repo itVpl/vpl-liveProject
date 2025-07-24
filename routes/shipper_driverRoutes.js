@@ -9,7 +9,8 @@ import {
   simpleStatusUpdate,
   addShipperTruckerByEmployee,
   getShipperTruckersByEmployee,
-  getAllUsersWithEmployeeInfo
+  getAllUsersWithEmployeeInfo,
+  addTruckerByCMTEmployee
 } from '../controllers/shipper_driverController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -35,5 +36,8 @@ router.get('/employee/my-additions', isAuthenticatedEmployee, (req, res) => {
 });
 router.get('/employee/additions/:empId', isAuthenticatedEmployee, getShipperTruckersByEmployee);
 router.get('/employee/all-with-info', isAuthenticatedEmployee, getAllUsersWithEmployeeInfo);
+
+// 🔥 NEW: CMT Department Employee can add Trucker only
+router.post('/cmt/add-trucker', isAuthenticatedEmployee, shipperTruckerUpload.single('docUpload'), addTruckerByCMTEmployee);
 
 export default router;
