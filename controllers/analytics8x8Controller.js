@@ -141,7 +141,7 @@ export const getCallRecords = async (req, res) => {
   try {
     console.log('🔄 Getting 8x8 call records...');
 
-    const { from, to } = req.query;
+    const { from, to, pageSize } = req.query;
 
     // Set current day range in New York timezone if not passed
     const nowNY = DateTime.now().setZone('America/New_York');
@@ -154,7 +154,7 @@ export const getCallRecords = async (req, res) => {
       qs.stringify({
         grant_type: 'password',
         username: 'EastonMPT',
-        password: 'Easton@18'
+        password: 'VPLeaston@18'
       }),
       {
         headers: {
@@ -176,7 +176,7 @@ export const getCallRecords = async (req, res) => {
           startTime: fromDate,
           endTime: toDate,
           timeZone: 'America/New_York',
-          pageSize: 1500
+          pageSize: pageSize || 1500
         },
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -205,7 +205,7 @@ export const getCallRecords = async (req, res) => {
 // 🔹 GET FILTERED CALL RECORDS
 export const getFilteredCallRecords = async (req, res) => {
   try {
-    const { callerName, calleeName, from, to } = req.query;
+    const { callerName, calleeName, from, to, pageSize } = req.query;
     console.log('🔄 Getting filtered 8x8 call records...');
 
     // Set current day range in New York timezone if not passed
@@ -240,7 +240,7 @@ export const getFilteredCallRecords = async (req, res) => {
           startTime: fromDate,
           endTime: toDate,
           timeZone: 'America/New_York',
-          pageSize: 1500
+          pageSize: pageSize || 1500
         },
         headers: {
           Authorization: `Bearer ${accessToken}`,
