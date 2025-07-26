@@ -33,6 +33,7 @@ import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import dayTargetRoutes from './routes/dayTargetRoutes.js';
 import rateLimit from 'express-rate-limit';
+import doRoutes from './routes/doRoutes.js';
 
 
 export const app = express();
@@ -166,6 +167,7 @@ app.use('/api/v1/loadboard', loadBoardRouter);
 app.use('/api/v1/driver', driverRouter);
 app.use('/api/v1/shipper_driver', shipperDriverRouter);
 app.use('/api/v1/inhouseUser', inhouseUserRouter);
+app.use('/api/v1/do', doRoutes);
 app.use('/api/v1/break', breakRoutes);
 app.use('/api/v1/module', moduleMasterRouter);
 app.use('/api/v1/target', targetRouter);
