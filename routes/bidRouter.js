@@ -12,7 +12,8 @@ import {
   approveBidIntermediateAuto,
   getAcceptedBidsForTrucker,
   assignDriverAndVehicle,
-  approveBidByOps
+  approveBidByOps,
+  placeBidByInhouseUser
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -27,6 +28,7 @@ bidRouter.get('/stats', getBidStats);
 
 // Specific routes first (before parameterized routes)
 bidRouter.post('/place', isTrucker, placeBid); // Only truckers can place bids
+bidRouter.post('/place-by-inhouse', placeBidByInhouseUser); // Inhouse users can place bids on behalf of truckers
 bidRouter.get('/load/:loadId', isShipper, getBidsForLoad); // Only shippers can view bids for their loads
 bidRouter.get('/trucker', isTrucker, getTruckerBids); // Only truckers can view their bids
 

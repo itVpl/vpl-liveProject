@@ -875,3 +875,91 @@ export const approveBidByOps = async (req, res, next) => {
         next(error);
     }
 };
+
+// ✅ Inhouse user places bid on behalf of trucker
+export const placeBidByInhouseUser = async (req, res, next) => {
+    try {
+        const { loadId, truckerId, empId, rate, message, estimatedPickupDate, estimatedDeliveryDate } = req.body;
+
+        console.log('Request body:', req.body);
+        console.log('empId received:', empId);
+
+        // Validate required fields
+        if (!empId) {
+            return res.status(400).json({
+                success: false,
+                message: 'empId is required'
+            });
+        }
+
+        // Check if load exists and is available for bidding
+        const load = await Load.findById(loadId);
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        if (!['Posted', 'Bidding'].includes(load.status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Load is not available for bidding'
+            });
+        }
+
+        // Check if trucker exists
+        const trucker = await ShipperDriver.findById(truckerId);
+        if (!trucker) {
+            return res.status(404).json({
+                success: false,
+                message: 'Trucker not found'
+            });
+        }
+
+        // Check if trucker has already bid on this load
+        const existingBid = await Bid.findOne({
+            load: loadId,
+            carrier: truckerId
+        });
+
+        if (existingBid) {
+            return res.status(400).json({
+                success: false,
+                message: 'This trucker has already placed a bid on this load'
+            });
+        }
+
+        const bid = new Bid({
+            load: loadId,
+            carrier: truckerId,
+            rate,
+            message,
+            estimatedPickupDate,
+            estimatedDeliveryDate,
+            status: 'PendingApproval',
+            intermediateRate: null,
+            placedByInhouseUser: empId
+        });
+
+        console.log('Bid object before save:', bid);
+
+        await bid.save();
+
+        console.log('Bid saved with placedByInhouseUser:', bid.placedByInhouseUser);
+
+        // Update load status to 'Bidding' if it was 'Posted'
+        if (load.status === 'Posted') {
+            load.status = 'Bidding';
+            await load.save();
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'Bid placed successfully on behalf of trucker and is pending approval',
+            bid,
+        });
+    } catch (error) {
+        next(error);
+    }
+};

@@ -84,6 +84,10 @@ const bidSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
+    placedByInhouseUser: {
+        type: String,
+        default: null,
+    },
 });
 
 // Update the updatedAt field before saving
