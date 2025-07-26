@@ -1834,3 +1834,163 @@ export const resetLoadStatus = async (req, res, next) => {
         next(error);
     }
 };
+
+// ✅ Get all loads for inhouse users
+export const getInhouseUserLoads = async (req, res, next) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            originCity,
+            destinationCity,
+            vehicleType,
+            status,
+            loadType,
+            minWeight,
+            maxWeight,
+            minRate,
+            maxRate,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // Build filter object
+        const filter = {};
+
+        // Apply filters
+        if (originCity) {
+            filter['origin.city'] = { $regex: originCity, $options: 'i' };
+        }
+        if (destinationCity) {
+            filter['destination.city'] = { $regex: destinationCity, $options: 'i' };
+        }
+        if (vehicleType) {
+            filter.vehicleType = vehicleType;
+        }
+        if (status) {
+            filter.status = status;
+        }
+        if (loadType) {
+            filter.loadType = loadType;
+        }
+        if (minWeight || maxWeight) {
+            filter.weight = {};
+            if (minWeight) filter.weight.$gte = Number(minWeight);
+            if (maxWeight) filter.weight.$lte = Number(maxWeight);
+        }
+        if (minRate || maxRate) {
+            filter.rate = {};
+            if (minRate) filter.rate.$gte = Number(minRate);
+            if (maxRate) filter.rate.$lte = Number(maxRate);
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName mc_dot_no city state email')
+            .populate('assignedTo', 'compName mc_dot_no city state')
+            .populate('acceptedBid')
+            .populate('carrier', 'compName mc_dot_no city state')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Load.countDocuments(filter);
+
+        // Get load statistics
+        const stats = await Load.aggregate([
+            { $match: filter },
+            {
+                $group: {
+                    _id: null,
+                    totalLoads: { $sum: 1 },
+                    totalPosted: { $sum: { $cond: [{ $eq: ['$status', 'Posted'] }, 1, 0] } },
+                    totalBidding: { $sum: { $cond: [{ $eq: ['$status', 'Bidding'] }, 1, 0] } },
+                    totalAssigned: { $sum: { $cond: [{ $eq: ['$status', 'Assigned'] }, 1, 0] } },
+                    totalInTransit: { $sum: { $cond: [{ $eq: ['$status', 'In Transit'] }, 1, 0] } },
+                    totalDelivered: { $sum: { $cond: [{ $eq: ['$status', 'Delivered'] }, 1, 0] } },
+                    totalCancelled: { $sum: { $cond: [{ $eq: ['$status', 'Cancelled'] }, 1, 0] } },
+                    avgRate: { $avg: '$rate' },
+                    totalWeight: { $sum: '$weight' }
+                }
+            }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            loads,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalLoads: total,
+            stats: stats[0] || {
+                totalLoads: 0,
+                totalPosted: 0,
+                totalBidding: 0,
+                totalAssigned: 0,
+                totalInTransit: 0,
+                totalDelivered: 0,
+                totalCancelled: 0,
+                avgRate: 0,
+                totalWeight: 0
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in getInhouseUserLoads:', error);
+        next(error);
+    }
+};
+
+// ✅ Get specific load details for inhouse users
+export const getInhouseUserLoadDetails = async (req, res, next) => {
+    try {
+        const { loadId } = req.params;
+
+        if (!loadId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Load ID is required'
+            });
+        }
+
+        const load = await Load.findById(loadId)
+            .populate('shipper', 'compName mc_dot_no city state email phone')
+            .populate('assignedTo', 'compName mc_dot_no city state email phone')
+            .populate('acceptedBid')
+            .populate('carrier', 'compName mc_dot_no city state email phone')
+            .exec();
+
+        if (!load) {
+            return res.status(404).json({
+                success: false,
+                message: 'Load not found'
+            });
+        }
+
+        // Get related bids for this load
+        const bids = await Bid.find({ load: loadId })
+            .populate('trucker', 'compName mc_dot_no city state email phone')
+            .sort({ createdAt: -1 })
+            .exec();
+
+        // Get tracking information if available
+        let tracking = null;
+        if (load.shipmentNumber) {
+            tracking = await Tracking.findOne({ shipmentNumber: load.shipmentNumber })
+                .sort({ createdAt: -1 })
+                .exec();
+        }
+
+        res.status(200).json({
+            success: true,
+            load,
+            bids,
+            tracking,
+            totalBids: bids.length
+        });
+    } catch (error) {
+        console.error('❌ Error in getInhouseUserLoadDetails:', error);
+        next(error);
+    }
+};

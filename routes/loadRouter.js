@@ -29,9 +29,11 @@ import {
     realTimeLoadCheck,
     checkLoadStatus,
     showAllImages,
-    resetLoadStatus
+    resetLoadStatus,
+    getInhouseUserLoads,
+    getInhouseUserLoadDetails
 } from '../controllers/loadController.js';
-import { isAuthenticatedUser, isShipper } from '../middlewares/auth.js';
+import { isAuthenticatedUser, isShipper, isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid, updateTrackingLocationByShipment as updateTrackingLocationByShipmentBid } from '../controllers/bidController.js';
 import { 
     proofOfDeliveryUpload, 
@@ -63,6 +65,10 @@ loadRouter.put('/shipment/:shipmentNumber/reset-status', resetLoadStatus); // Re
 
 loadRouter.post('/create', isShipper, createLoad); 
 loadRouter.get('/shipper', isShipper, getShipperLoads); 
+
+// Inhouse user routes
+loadRouter.get('/inhouse', isAuthenticatedEmployee, getInhouseUserLoads);
+loadRouter.get('/inhouse/:loadId', isAuthenticatedEmployee, getInhouseUserLoadDetails);
 
 // Update existing loads with geocoding (admin/dev use)
 loadRouter.post('/update-geocoding', updateLoadsWithGeocoding);
