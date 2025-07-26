@@ -1,5 +1,6 @@
 import Message from '../models/Message.js';
 import { Employee } from '../models/inhouseUserModel.js';
+import { onlineUsers } from '../server.js';
 
 // export const sendMessage = async (req, res) => {
 //   try {
@@ -30,19 +31,50 @@ export const sendMessage = (io) => async (req, res) => {
       return res.status(404).json({ error: 'Sender or receiver not found' });
     }
 
+    // Handle file upload (image/pdf)
+    let imageUrl = undefined;
+    let fileUrl = undefined;
+    if (req.file) {
+      const ext = req.file.originalname.split('.').pop().toLowerCase();
+      if (["jpg", "jpeg", "png"].includes(ext)) {
+        imageUrl = req.file.location || req.file.path;
+      } else if (ext === "pdf") {
+        fileUrl = req.file.location || req.file.path;
+      } else {
+        // fallback: treat as file
+        fileUrl = req.file.location || req.file.path;
+      }
+    }
+
     const newMsg = await Message.create({
       sender: senderUser._id,
       receiver: receiverUser._id,
       message,
+      image: imageUrl,
+      file: fileUrl,
       status: 'sent',
       replyTo: replyTo || null
     });
 
-    // ✅ Emit socket message event
-    io.emit("newMessage", {
-      senderEmpId,
-      receiverEmpId
-    });
+    // Sirf receiver ko emit karo
+    const toSocketId = onlineUsers.get(receiverEmpId);
+    if (toSocketId) {
+      io.to(toSocketId).emit('newMessage', {
+        senderEmpId,
+        receiverEmpId,
+        message,
+        image: imageUrl,
+        file: fileUrl,
+        _id: newMsg._id,
+        timestamp: newMsg.timestamp
+      });
+      // Optional: notification event
+      io.to(toSocketId).emit('notification', {
+        title: 'New Message',
+        body: message || 'You received a new message',
+        from: senderEmpId
+      });
+    }
 
     res.status(201).json(newMsg);
   } catch (err) {
