@@ -18,7 +18,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:5173', 'https://fluffy-fenglisu-36edff.netlify.app', 'http://localhost:5174', 'https://fluffy-axolotl-0dcf0f.netlify.app'], // ✅ allow both
+    origin: ['http://localhost:5173', 'https://fluffy-fenglisu-36edff.netlify.app', 'https://vpower.netlify.app/'], 
     methods: ['GET', 'POST'],
     credentials: true
   }
