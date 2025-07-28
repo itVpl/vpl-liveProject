@@ -13,7 +13,8 @@ import {
   getAcceptedBidsForTrucker,
   assignDriverAndVehicle,
   approveBidByOps,
-  placeBidByInhouseUser
+  placeBidByInhouseUser,
+  getBidsPendingIntermediateApproval
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -25,6 +26,9 @@ bidRouter.get('/test-user-loads', isShipper, testUserLoads);
 
 // Statistics Route (Public)
 bidRouter.get('/stats', getBidStats);
+
+// Get bids pending intermediate approval
+bidRouter.get('/pending-intermediate-approval', getBidsPendingIntermediateApproval);
 
 // Specific routes first (before parameterized routes)
 bidRouter.post('/place', isTrucker, placeBid); // Only truckers can place bids

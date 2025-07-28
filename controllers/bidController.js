@@ -876,6 +876,25 @@ export const approveBidByOps = async (req, res, next) => {
     }
 };
 
+// ✅ Get bids pending intermediate approval
+export const getBidsPendingIntermediateApproval = async (req, res, next) => {
+    try {
+        const bids = await Bid.find({ status: 'PendingApproval' })
+            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber')
+            .populate('carrier', 'compName mc_dot_no city state phoneNo email fleetsize')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            message: 'Bids pending intermediate approval retrieved successfully',
+            count: bids.length,
+            bids
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ✅ Inhouse user places bid on behalf of trucker
 export const placeBidByInhouseUser = async (req, res, next) => {
     try {
