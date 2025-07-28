@@ -2,6 +2,9 @@ import Message from '../models/Message.js';
 import { Employee } from '../models/inhouseUserModel.js';
 import { onlineUsers } from '../server.js';
 import { normalizeChatFilePath } from '../middlewares/upload.js';
+import fs from 'fs';
+import path from 'path';
+import AWS from 'aws-sdk';
 
 // export const sendMessage = async (req, res) => {
 //   try {
@@ -290,6 +293,143 @@ export const getChatFiles = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+// Download chat file
+export const downloadChatFile = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const myEmpId = req.user.empId;
+
+    // Find the message and verify access
+    const message = await Message.findById(messageId)
+      .populate('sender', 'empId employeeName')
+      .populate('receiver', 'empId employeeName');
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Check if user has access to this message (sender or receiver)
+    const myUser = await Employee.findOne({ empId: myEmpId });
+    if (!myUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isSender = message.sender._id.equals(myUser._id);
+    const isReceiver = message.receiver._id.equals(myUser._id);
+
+    if (!isSender && !isReceiver) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get file URL (image or file)
+    const fileUrl = message.image || message.file;
+    if (!fileUrl) {
+      return res.status(404).json({ error: 'No file found in this message' });
+    }
+
+    // Determine file type and name
+    const fileType = message.image ? 'image' : 'document';
+    const fileName = fileUrl.split('/').pop() || 'download';
+    
+    // Check if it's S3 URL or local file
+    if (fileUrl.startsWith('http')) {
+      // S3 file - redirect to S3 URL
+      res.redirect(fileUrl);
+    } else {
+      // Local file
+      const filePath = path.join(process.cwd(), fileUrl);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'File not found on server' });
+      }
+
+      // Set headers for download
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Type', getContentType(fileName));
+      
+      // Stream the file
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+    }
+
+  } catch (err) {
+    console.error('Download error:', err);
+    res.status(500).json({ error: 'Download failed' });
+  }
+};
+
+// Helper function to get content type
+const getContentType = (fileName) => {
+  const ext = path.extname(fileName).toLowerCase();
+  switch (ext) {
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.png':
+      return 'image/png';
+    case '.pdf':
+      return 'application/pdf';
+    default:
+      return 'application/octet-stream';
+  }
+};
+
+// Get download URLs for multiple files (for frontend use)
+export const getFileDownloadUrls = async (req, res) => {
+  try {
+    const { messageIds } = req.body; // Array of message IDs
+    const myEmpId = req.user.empId;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'Message IDs array is required' });
+    }
+
+    const myUser = await Employee.findOne({ empId: myEmpId });
+    if (!myUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Find all messages and verify access
+    const messages = await Message.find({
+      _id: { $in: messageIds },
+      $or: [
+        { sender: myUser._id },
+        { receiver: myUser._id }
+      ]
+    }).populate('sender', 'empId employeeName');
+
+    if (messages.length === 0) {
+      return res.status(404).json({ error: 'No accessible messages found' });
+    }
+
+    // Format response with download URLs
+    const downloadUrls = messages.map(msg => {
+      const fileUrl = msg.image || msg.file;
+      if (!fileUrl) return null;
+
+      return {
+        messageId: msg._id,
+        fileName: fileUrl.split('/').pop() || 'download',
+        fileType: msg.image ? 'image' : 'document',
+        downloadUrl: `/api/chat/download/${msg._id}`,
+        originalUrl: normalizeChatFilePath(fileUrl),
+        uploadedBy: msg.sender.employeeName,
+        uploadedAt: msg.timestamp
+      };
+    }).filter(item => item !== null);
+
+    res.json({
+      files: downloadUrls,
+      total: downloadUrls.length
+    });
+
+  } catch (err) {
+    console.error('Get download URLs error:', err);
+    res.status(500).json({ error: 'Failed to get download URLs' });
   }
 };
 

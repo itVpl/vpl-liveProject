@@ -11,6 +11,8 @@ import {
   searchEmployeesForChat,
   getUserChatFiles,
   getChatFiles,
+  downloadChatFile,
+  getFileDownloadUrls,
 } from '../controllers/chatController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { sendMessage } from '../controllers/chatController.js';
@@ -29,6 +31,8 @@ export default function(io) {
   // File management routes
   router.get('/files/user/:empId', isAuthenticatedEmployee, getUserChatFiles);
   router.get('/files/chat/:empId', isAuthenticatedEmployee, getChatFiles);
+  router.get('/download/:messageId', isAuthenticatedEmployee, downloadChatFile);
+  router.post('/download-urls', isAuthenticatedEmployee, getFileDownloadUrls);
 
   return router;
 }
