@@ -141,9 +141,41 @@ const chatFileFilter = (req, file, cb) => {
 };
 
 const chatFileUpload = multer({
-  storage: getS3Storage(() => `chatFiles`),
+  storage: isS3Configured ? multerS3({
+    s3,
+    bucket: BUCKET,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    contentDisposition: 'inline',
+    metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
+    key: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const senderName = req.user?.name || req.user?.empId || 'unknown';
+      const cleanSenderName = senderName.replace(/[^a-zA-Z0-9]/g, '_');
+      const timestamp = Date.now();
+      const filename = `chatFiles/${cleanSenderName}/${cleanSenderName}_${timestamp}${ext}`;
+      cb(null, filename);
+    }
+  }) : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const senderName = req.user?.name || req.user?.empId || 'unknown';
+      const cleanSenderName = senderName.replace(/[^a-zA-Z0-9]/g, '_');
+      const uploadPath = path.join(__dirname, '../uploads/chatFiles', cleanSenderName);
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const senderName = req.user?.name || req.user?.empId || 'unknown';
+      const cleanSenderName = senderName.replace(/[^a-zA-Z0-9]/g, '_');
+      const timestamp = Date.now();
+      const fileName = `${cleanSenderName}_${timestamp}${ext}`;
+      cb(null, fileName);
+    }
+  }),
   fileFilter: chatFileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 } 
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 const driverRegisterUpload = multer({
@@ -174,9 +206,17 @@ const normalizeShipperTruckerPath = (pathStr) => {
   return pathStr;
 };
 
+const normalizeChatFilePath = (pathStr) => {
+  if (!pathStr) return '';
+  if (pathStr.startsWith('http')) return pathStr;
+  if (isS3Configured && pathStr.includes('chatFiles')) return getS3Url(pathStr);
+  return pathStr;
+};
+
 export {
   normalizePath,
   normalizeShipperTruckerPath,
+  normalizeChatFilePath,
   employeeUpload,
   shipperTruckerUpload,
   proofOfDeliveryUpload,
