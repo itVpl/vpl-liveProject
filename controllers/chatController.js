@@ -61,6 +61,8 @@ export const sendMessage = (io) => async (req, res) => {
       replyTo: replyTo || null
     });
 
+
+
     // Sirf receiver ko emit karo
     const toSocketId = onlineUsers.get(receiverEmpId);
     if (toSocketId) {
@@ -73,6 +75,7 @@ export const sendMessage = (io) => async (req, res) => {
         _id: newMsg._id,
         timestamp: newMsg.timestamp
       });
+      
       // Optional: notification event
       io.to(toSocketId).emit('notification', {
         title: 'New Message',
@@ -457,6 +460,85 @@ export const searchEmployeesForChat = async (req, res) => {
       .limit(20);
     res.json(employees);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}; 
+
+// Get unread messages for the current user
+export const getUnreadMessages = async (req, res) => {
+  try {
+    const myEmpId = req.user.empId;
+    const myUser = await Employee.findOne({ empId: myEmpId });
+    
+    if (!myUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get all unread messages where current user is the receiver
+    const unreadMessages = await Message.find({
+      receiver: myUser._id,
+      status: { $ne: 'seen' }
+    })
+      .populate('sender', 'empId employeeName email department designation')
+      .populate('receiver', 'empId employeeName email department designation')
+      .sort({ timestamp: -1 })
+      .lean();
+
+    // Group messages by sender
+    const unreadBySender = {};
+    
+    for (const msg of unreadMessages) {
+      const senderEmpId = msg.sender.empId;
+      
+      if (!unreadBySender[senderEmpId]) {
+        unreadBySender[senderEmpId] = {
+          sender: {
+            empId: msg.sender.empId,
+            employeeName: msg.sender.employeeName,
+            email: msg.sender.email,
+            department: msg.sender.department,
+            designation: msg.sender.designation
+          },
+          unreadCount: 0,
+          lastMessage: null,
+          lastMessageTime: null,
+          messages: []
+        };
+      }
+      
+      unreadBySender[senderEmpId].unreadCount += 1;
+      unreadBySender[senderEmpId].messages.push({
+        _id: msg._id,
+        message: msg.message,
+        image: msg.image ? normalizeChatFilePath(msg.image) : undefined,
+        file: msg.file ? normalizeChatFilePath(msg.file) : undefined,
+        timestamp: msg.timestamp,
+        status: msg.status,
+        replyTo: msg.replyTo
+      });
+      
+      // Update last message info
+      if (!unreadBySender[senderEmpId].lastMessageTime || 
+          msg.timestamp > unreadBySender[senderEmpId].lastMessageTime) {
+        unreadBySender[senderEmpId].lastMessage = msg.message;
+        unreadBySender[senderEmpId].lastMessageTime = msg.timestamp;
+      }
+    }
+
+    // Convert to array and sort by last message time
+    const unreadMessagesList = Object.values(unreadBySender).sort((a, b) => 
+      new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
+    );
+
+    res.json({
+      success: true,
+      totalUnreadCount: unreadMessages.length,
+      unreadBySender: unreadMessagesList,
+      totalSenders: unreadMessagesList.length
+    });
+
+  } catch (err) {
+    console.error('Get unread messages error:', err);
     res.status(500).json({ error: err.message });
   }
 }; 

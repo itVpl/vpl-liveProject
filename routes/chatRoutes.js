@@ -13,6 +13,7 @@ import {
   getChatFiles,
   downloadChatFile,
   getFileDownloadUrls,
+  getUnreadMessages,
 } from '../controllers/chatController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { sendMessage } from '../controllers/chatController.js';
@@ -25,6 +26,7 @@ export default function(io) {
   router.post('/send', isAuthenticatedEmployee, chatFileUpload.single('file'), sendMessage(io));
   router.get('/with/:empId', isAuthenticatedEmployee, getChat);
   router.get('/list', isAuthenticatedEmployee, getChatList);
+  router.get('/unread', isAuthenticatedEmployee, getUnreadMessages);
   router.patch('/seen/:empId', isAuthenticatedEmployee, markAsSeen);
   router.get('/search-users', isAuthenticatedEmployee, searchEmployeesForChat);
   
