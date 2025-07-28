@@ -1,45 +1,3 @@
-// import express from 'express';
-// import { 
-//     registerDriver, 
-//     loginDriver, 
-//     getAllDrivers, 
-//     getDriverById, 
-//     updateDriver, 
-//     deleteDriver,
-//     getDriversByTrucker,
-//     getAssignedShipments,
-//     markArrivalAndUpload,
-//     getMyProfile,
-//     getDriverDetailsById
-// } from '../controllers/driverController.js';
-// import { isAuthenticatedUser } from '../middlewares/auth.js';
-// import upload from '../middlewares/upload.js';
-
-// const driverRouter = express.Router();
-
-// // Public routes
-// driverRouter.post('/login', loginDriver);
-// driverRouter.get('/details/:driverId', getDriverDetailsById);
-
-// // Protected routes - Only truckers can access
-// driverRouter.post('/register', isAuthenticatedUser, registerDriver);
-// driverRouter.get('/my-drivers', isAuthenticatedUser, getDriversByTrucker); 
-// driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
-// driverRouter.post('/mark-arrival/:loadId', isAuthenticatedUser, upload.array('images'), markArrivalAndUpload);
-// driverRouter.get('/:id', isAuthenticatedUser, getDriverById);
-// driverRouter.put('/:id', isAuthenticatedUser, updateDriver);
-// driverRouter.delete('/:id', isAuthenticatedUser, deleteDriver);
-
-// // Driver-only routes
-// driverRouter.get('/me', isAuthenticatedUser, getMyProfile);
-
-// // Admin routes - For admin/super admin to see all drivers
-// driverRouter.get('/all', isAuthenticatedUser, getAllDrivers);
-
-// export default driverRouter;
-
-
-
 import express from 'express';
 import {
   registerDriver,
@@ -58,7 +16,8 @@ import {
 } from '../controllers/driverController.js';
 
 import {
-  isAuthenticatedUser
+  isAuthenticatedUser,
+  isAuthenticatedDriver
 } from '../middlewares/auth.js';
 
 import { driverRegisterUpload } from '../middlewares/upload.js';
@@ -72,7 +31,12 @@ driverRouter.get('/details/:driverId', getDriverDetailsById);
 // ✅ Truckers only
 driverRouter.post('/register', isAuthenticatedUser, driverRegisterUpload, registerDriver);
 driverRouter.get('/my-drivers', isAuthenticatedUser, getDriversByTrucker);
-driverRouter.get('/my-shipments', isAuthenticatedUser, getAssignedShipments);
+
+// ✅ Driver shipments by ID (no auth required)
+driverRouter.get('/my-shipments/:driverId', getAssignedShipments);
+
+// ✅ Driver-only routes (with auth)
+driverRouter.get('/me', isAuthenticatedDriver, getMyProfile);
 
 // ✅ Mark arrival (driver-only route)
 // driverRouter.post(
@@ -90,11 +54,8 @@ driverRouter.get('/:id', isAuthenticatedUser, getDriverById);
 driverRouter.put('/:id', isAuthenticatedUser, updateDriver);
 driverRouter.delete('/:id', isAuthenticatedUser, deleteDriver);
 
-// ✅ Driver profile
-driverRouter.get('/me', getMyProfile);
-
 // ✅ Driver logout
-driverRouter.post('/logout', logoutDriver);
+driverRouter.post('/logout', isAuthenticatedDriver, logoutDriver);
 
 // ✅ Logout by driverId (for debug/testing only)
 driverRouter.post('/logout-by-id', logoutDriverById);

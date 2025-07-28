@@ -266,7 +266,24 @@ export const deleteDriver = async (req, res, next) => {
 // ✅ Get shipments assigned to the logged-in driver
 export const getAssignedShipments = async (req, res, next) => {
     try {
-        const driverId = req.user._id;
+        const driverId = req.params.driverId || req.user?._id;
+        
+        if (!driverId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Driver ID is required'
+            });
+        }
+
+        // Check if driver exists
+        const driver = await Driver.findById(driverId);
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: 'Driver not found'
+            });
+        }
+
         const allAssignedLoads = await Load.find({ assignedTo: driverId })
             .populate('shipper', 'compName')
             .populate('acceptedBid')
@@ -278,8 +295,15 @@ export const getAssignedShipments = async (req, res, next) => {
 
         res.status(200).json({
             success: true,
+            driver: {
+                id: driver._id,
+                fullName: driver.fullName,
+                email: driver.email,
+                phone: driver.phone
+            },
             activeShipments,
-            inactiveShipments
+            inactiveShipments,
+            totalShipments: allAssignedLoads.length
         });
     } catch (err) {
         next(err);
