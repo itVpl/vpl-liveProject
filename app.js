@@ -59,6 +59,7 @@ const allowedOrigins = [
     'http://192.168.1.7:5173',
     'https://vpowersuperadmin.netlify.app',
     'https://fluffy-fenglisu-36edff.netlify.app',
+    'https://vpower.netlify.app',
 ];
 
 // app.use(cors({
