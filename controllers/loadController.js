@@ -2306,3 +2306,431 @@ export const getLoadsCreatedBySalesUser = async (req, res, next) => {
         next(error);
     }
 };
+
+// ✅ Get loads for any authenticated user (unified API)
+export const getUserLoads = async (req, res, next) => {
+    try {
+        // ✅ 1. Check if user is authenticated
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
+            });
+        }
+
+        const {
+            page = 1,
+            limit = 10,
+            status,
+            loadType,
+            originCity,
+            destinationCity,
+            vehicleType,
+            minWeight,
+            maxWeight,
+            minRate,
+            maxRate,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // ✅ 2. Build filter based on user type
+        let filter = {};
+
+        // Handle different ObjectId formats
+        let userId;
+        try {
+            if (typeof req.user._id === 'string') {
+                userId = req.user._id;
+            } else {
+                userId = req.user._id.toString();
+            }
+            
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid user ID format'
+                });
+            }
+        } catch (error) {
+            console.error('❌ Error converting user ID:', error);
+            return res.status(400).json({
+                success: false,
+                message: 'Error processing user ID'
+            });
+        }
+
+        // ✅ 3. Set filter based on user type
+        if (req.user.userType === 'shipper') {
+            // Shipper sees loads they created
+            filter.shipper = userId;
+        } else if (req.user.userType === 'trucker') {
+            // Trucker sees loads assigned to them
+            filter.assignedTo = userId;
+        } else if (req.user.userType === 'employee') {
+            // Employee sees loads based on their department
+            if (req.user.department === 'Sales') {
+                // Sales employees see loads they created
+                filter['createdBySalesUser.empId'] = req.user.empId;
+            } else {
+                // Other employees (inhouse) see all loads
+                filter = {}; // No filter for inhouse users
+            }
+        } else {
+            return res.status(403).json({
+                success: false,
+                message: 'User type not supported for load viewing'
+            });
+        }
+
+        // ✅ 4. Apply additional filters
+        if (status) {
+            filter.status = status;
+        }
+        if (loadType) {
+            filter.loadType = loadType;
+        }
+        if (originCity) {
+            filter['origin.city'] = { $regex: originCity, $options: 'i' };
+        }
+        if (destinationCity) {
+            filter['destination.city'] = { $regex: destinationCity, $options: 'i' };
+        }
+        if (vehicleType) {
+            filter.vehicleType = vehicleType;
+        }
+        if (minWeight || maxWeight) {
+            filter.weight = {};
+            if (minWeight) filter.weight.$gte = Number(minWeight);
+            if (maxWeight) filter.weight.$lte = Number(maxWeight);
+        }
+        if (minRate || maxRate) {
+            filter.rate = {};
+            if (minRate) filter.rate.$gte = Number(minRate);
+            if (maxRate) filter.rate.$lte = Number(maxRate);
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // ✅ 5. Find loads with appropriate population
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName mc_dot_no city state email')
+            .populate('assignedTo', 'compName mc_dot_no city state email')
+            .populate('acceptedBid')
+            .populate('carrier', 'compName mc_dot_no city state email')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Load.countDocuments(filter);
+
+        // ✅ 6. Get statistics based on user type
+        let statistics = {};
+        
+        if (req.user.userType === 'shipper') {
+            const stats = await Load.aggregate([
+                { $match: { shipper: mongoose.Types.ObjectId(userId) } },
+                {
+                    $group: {
+                        _id: null,
+                        totalLoads: { $sum: 1 },
+                        totalPosted: { $sum: { $cond: [{ $eq: ['$status', 'Posted'] }, 1, 0] } },
+                        totalBidding: { $sum: { $cond: [{ $eq: ['$status', 'Bidding'] }, 1, 0] } },
+                        totalAssigned: { $sum: { $cond: [{ $eq: ['$status', 'Assigned'] }, 1, 0] } },
+                        totalInTransit: { $sum: { $cond: [{ $eq: ['$status', 'In Transit'] }, 1, 0] } },
+                        totalDelivered: { $sum: { $cond: [{ $eq: ['$status', 'Delivered'] }, 1, 0] } },
+                        totalCancelled: { $sum: { $cond: [{ $eq: ['$status', 'Cancelled'] }, 1, 0] } },
+                        avgRate: { $avg: '$rate' },
+                        totalWeight: { $sum: '$weight' }
+                    }
+                }
+            ]);
+            statistics = stats[0] || {
+                totalLoads: 0,
+                totalPosted: 0,
+                totalBidding: 0,
+                totalAssigned: 0,
+                totalInTransit: 0,
+                totalDelivered: 0,
+                totalCancelled: 0,
+                avgRate: 0,
+                totalWeight: 0
+            };
+        } else if (req.user.userType === 'trucker') {
+            const stats = await Load.aggregate([
+                { $match: { assignedTo: mongoose.Types.ObjectId(userId) } },
+                {
+                    $group: {
+                        _id: null,
+                        totalLoads: { $sum: 1 },
+                        totalAssigned: { $sum: { $cond: [{ $eq: ['$status', 'Assigned'] }, 1, 0] } },
+                        totalInTransit: { $sum: { $cond: [{ $eq: ['$status', 'In Transit'] }, 1, 0] } },
+                        totalDelivered: { $sum: { $cond: [{ $eq: ['$status', 'Delivered'] }, 1, 0] } },
+                        avgRate: { $avg: '$rate' },
+                        totalWeight: { $sum: '$weight' }
+                    }
+                }
+            ]);
+            statistics = stats[0] || {
+                totalLoads: 0,
+                totalAssigned: 0,
+                totalInTransit: 0,
+                totalDelivered: 0,
+                avgRate: 0,
+                totalWeight: 0
+            };
+        } else if (req.user.userType === 'employee' && req.user.department === 'Sales') {
+            const stats = await Load.aggregate([
+                { $match: { 'createdBySalesUser.empId': req.user.empId } },
+                {
+                    $group: {
+                        _id: null,
+                        totalLoads: { $sum: 1 },
+                        totalPosted: { $sum: { $cond: [{ $eq: ['$status', 'Posted'] }, 1, 0] } },
+                        totalAssigned: { $sum: { $cond: [{ $eq: ['$status', 'Assigned'] }, 1, 0] } },
+                        totalDelivered: { $sum: { $cond: [{ $eq: ['$status', 'Delivered'] }, 1, 0] } },
+                        avgRate: { $avg: '$rate' },
+                        totalWeight: { $sum: '$weight' }
+                    }
+                }
+            ]);
+            statistics = stats[0] || {
+                totalLoads: 0,
+                totalPosted: 0,
+                totalAssigned: 0,
+                totalDelivered: 0,
+                avgRate: 0,
+                totalWeight: 0
+            };
+        } else if (req.user.userType === 'employee') {
+            // Inhouse users see all loads statistics
+            const stats = await Load.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalLoads: { $sum: 1 },
+                        totalPosted: { $sum: { $cond: [{ $eq: ['$status', 'Posted'] }, 1, 0] } },
+                        totalBidding: { $sum: { $cond: [{ $eq: ['$status', 'Bidding'] }, 1, 0] } },
+                        totalAssigned: { $sum: { $cond: [{ $eq: ['$status', 'Assigned'] }, 1, 0] } },
+                        totalInTransit: { $sum: { $cond: [{ $eq: ['$status', 'In Transit'] }, 1, 0] } },
+                        totalDelivered: { $sum: { $cond: [{ $eq: ['$status', 'Delivered'] }, 1, 0] } },
+                        totalCancelled: { $sum: { $cond: [{ $eq: ['$status', 'Cancelled'] }, 1, 0] } },
+                        avgRate: { $avg: '$rate' },
+                        totalWeight: { $sum: '$weight' }
+                    }
+                }
+            ]);
+            statistics = stats[0] || {
+                totalLoads: 0,
+                totalPosted: 0,
+                totalBidding: 0,
+                totalAssigned: 0,
+                totalInTransit: 0,
+                totalDelivered: 0,
+                totalCancelled: 0,
+                avgRate: 0,
+                totalWeight: 0
+            };
+        }
+
+        // ✅ 7. Return response
+        res.status(200).json({
+            success: true,
+            loads,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalLoads: total,
+            statistics,
+            userInfo: {
+                userId: req.user._id,
+                userType: req.user.userType,
+                department: req.user.department,
+                compName: req.user.compName,
+                email: req.user.email
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error in getUserLoads:', error);
+        next(error);
+    }
+};
+
+// ✅ Simple API for inhouse users to see loads they created
+export const getInhouseUserCreatedLoads = async (req, res, next) => {
+    try {
+        // ✅ 1. Check if user is authenticated
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
+            });
+        }
+
+        // ✅ 2. Check if user is an inhouse user (employee)
+        if (!req.user.role || !['superadmin', 'admin', 'employee'].includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only inhouse users can access this endpoint'
+            });
+        }
+
+        const {
+            page = 1,
+            limit = 10,
+            status,
+            loadType,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // ✅ 3. Build filter to find loads created by this inhouse user
+        const filter = {
+            'createdBySalesUser.empId': req.user.empId
+        };
+
+        // Apply additional filters
+        if (status) {
+            filter.status = status;
+        }
+        if (loadType) {
+            filter.loadType = loadType;
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // ✅ 4. Find loads with populated information
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName mc_dot_no city state email phoneNo')
+            .populate('assignedTo', 'compName mc_dot_no city state')
+            .populate('acceptedBid')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Load.countDocuments(filter);
+
+        // ✅ 5. Get basic statistics
+        const totalLoads = await Load.countDocuments({ 'createdBySalesUser.empId': req.user.empId });
+        const postedLoads = await Load.countDocuments({ 
+            'createdBySalesUser.empId': req.user.empId, 
+            status: 'Posted' 
+        });
+        const assignedLoads = await Load.countDocuments({ 
+            'createdBySalesUser.empId': req.user.empId, 
+            status: 'Assigned' 
+        });
+        const deliveredLoads = await Load.countDocuments({ 
+            'createdBySalesUser.empId': req.user.empId, 
+            status: 'Delivered' 
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Loads retrieved successfully',
+            loads,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalLoads: total,
+            statistics: {
+                totalLoads,
+                postedLoads,
+                assignedLoads,
+                deliveredLoads
+            },
+            userInfo: {
+                empId: req.user.empId,
+                empName: req.user.employeeName,
+                department: req.user.department,
+                role: req.user.role
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error in getInhouseUserCreatedLoads:', error);
+        next(error);
+    }
+};
+
+// ✅ Debug function to check loads and create test load
+export const debugInhouseLoads = async (req, res, next) => {
+    try {
+        // ✅ 1. Check if user is authenticated
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
+            });
+        }
+
+        // ✅ 2. Check if user is an inhouse user (employee)
+        if (!req.user.role || !['superadmin', 'admin', 'employee'].includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only inhouse users can access this endpoint'
+            });
+        }
+
+        // ✅ 3. Get all loads in the database
+        const allLoads = await Load.find({}).populate('shipper', 'compName mc_dot_no city state email phoneNo');
+        
+        // ✅ 4. Get loads created by this specific user
+        const userLoads = await Load.find({ 'createdBySalesUser.empId': req.user.empId })
+            .populate('shipper', 'compName mc_dot_no city state email phoneNo');
+
+        // ✅ 5. Get loads with any createdBySalesUser
+        const salesCreatedLoads = await Load.find({ 'createdBySalesUser.empId': { $exists: true, $ne: null } })
+            .populate('shipper', 'compName mc_dot_no city state email phoneNo');
+
+        res.status(200).json({
+            success: true,
+            message: 'Debug information for inhouse loads',
+            userInfo: {
+                empId: req.user.empId,
+                empName: req.user.employeeName,
+                department: req.user.department,
+                role: req.user.role
+            },
+            statistics: {
+                totalLoadsInDatabase: allLoads.length,
+                loadsCreatedByThisUser: userLoads.length,
+                loadsCreatedByAnySalesUser: salesCreatedLoads.length
+            },
+            allLoads: allLoads.map(load => ({
+                _id: load._id,
+                shipper: load.shipper,
+                createdBySalesUser: load.createdBySalesUser,
+                status: load.status,
+                origin: load.origin,
+                destination: load.destination,
+                createdAt: load.createdAt
+            })),
+            userLoads: userLoads.map(load => ({
+                _id: load._id,
+                shipper: load.shipper,
+                createdBySalesUser: load.createdBySalesUser,
+                status: load.status,
+                origin: load.origin,
+                destination: load.destination,
+                createdAt: load.createdAt
+            })),
+            salesCreatedLoads: salesCreatedLoads.map(load => ({
+                _id: load._id,
+                shipper: load.shipper,
+                createdBySalesUser: load.createdBySalesUser,
+                status: load.status,
+                origin: load.origin,
+                destination: load.destination,
+                createdAt: load.createdAt
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Error in debugInhouseLoads:', error);
+        next(error);
+    }
+};

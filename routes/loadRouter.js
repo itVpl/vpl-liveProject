@@ -33,7 +33,10 @@ import {
     getInhouseUserLoads,
     getInhouseUserLoadDetails,
     createLoadBySalesUser,
-    getLoadsCreatedBySalesUser
+    getLoadsCreatedBySalesUser,
+    getUserLoads,
+    getInhouseUserCreatedLoads,
+    debugInhouseLoads
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper, isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid, updateTrackingLocationByShipment as updateTrackingLocationByShipmentBid } from '../controllers/bidController.js';
@@ -52,6 +55,9 @@ const loadRouter = express.Router();
 loadRouter.get('/available', getAvailableLoads); // Public route for load board
 loadRouter.get('/search', searchLoads); // Public search route
 loadRouter.get('/stats', getLoadStats); // Public stats route
+
+// ✅ Unified API for any authenticated user to view their own loads
+loadRouter.get('/my-loads', isAuthenticatedUser, getUserLoads);
 
 // Test endpoints for debugging
 loadRouter.get('/test-auth', isAuthenticatedUser, testUserAuth);
@@ -77,6 +83,12 @@ loadRouter.get('/sales-user-loads', isAuthenticatedEmployee, getLoadsCreatedBySa
 // Inhouse user routes
 loadRouter.get('/inhouse', isAuthenticatedEmployee, getInhouseUserLoads);
 loadRouter.get('/inhouse/:loadId', isAuthenticatedEmployee, getInhouseUserLoadDetails);
+
+// ✅ Simple API for inhouse users to see loads they created
+loadRouter.get('/inhouse-created', isAuthenticatedEmployee, getInhouseUserCreatedLoads);
+
+// ✅ Debug endpoint to check loads and understand the data
+loadRouter.get('/inhouse-debug', isAuthenticatedEmployee, debugInhouseLoads);
 
 // Update existing loads with geocoding (admin/dev use)
 loadRouter.post('/update-geocoding', updateLoadsWithGeocoding);
