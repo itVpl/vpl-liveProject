@@ -1149,6 +1149,428 @@ const getTodayTruckerCount = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Department-based customer addition (CMT=Trucker, Sales=Shipper)
+const addCustomerByDepartmentEmployee = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user belongs to CMT or Sales department
+        if (inhouseUser.department !== 'CMT' && inhouseUser.department !== 'Sales') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only CMT and Sales department employees can add customers'
+            });
+        }
+
+        // ✅ 3. Set userType based on department
+        const userType = inhouseUser.department === 'CMT' ? 'trucker' : 'shipper';
+        const departmentText = inhouseUser.department === 'CMT' ? 'Trucker' : 'Shipper';
+
+        // ✅ 4. Extract customer data from request body with proper error handling
+        console.log('🔍 Request body:', req.body);
+        console.log('🔍 Request files:', req.files);
+        console.log('🔍 Request file:', req.file);
+        
+        // Handle both form data and JSON
+        let customerData = {};
+        
+        // Try to get data from different sources
+        if (req.body && Object.keys(req.body).length > 0) {
+            customerData = req.body;
+        } else if (req.body) {
+            customerData = req.body;
+        } else {
+            console.log('⚠️ req.body is empty or undefined');
+        }
+        
+        console.log('🔍 Final customer data:', customerData);
+
+        const {
+            compName,
+            mc_dot_no,
+            carrierType,
+            fleetsize,
+            compAdd,
+            country,
+            state,
+            city,
+            zipcode,
+            phoneNo,
+            email,
+            password
+        } = customerData;
+
+        // ✅ 5. Validate required fields
+        if (!compName || !phoneNo || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Company name, phone number, email, and password are required',
+                errors: {
+                    compName: !compName ? 'Company name is required' : null,
+                    phoneNo: !phoneNo ? 'Phone number is required' : null,
+                    email: !email ? 'Email is required' : null,
+                    password: !password ? 'Password is required' : null
+                }
+            });
+        }
+
+        // ✅ 6. Check if email already exists
+        const existingEmail = await ShipperDriver.findOne({ email: email.toLowerCase() });
+        if (existingEmail) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email already registered',
+                errors: {
+                    email: 'This email is already in use'
+                }
+            });
+        }
+
+        // ✅ 7. Check if phone already exists
+        const existingPhone = await ShipperDriver.findOne({ phoneNo });
+        if (existingPhone) {
+            return res.status(400).json({
+                success: false,
+                message: 'Phone number already registered',
+                errors: {
+                    phoneNo: 'This phone number is already in use'
+                }
+            });
+        }
+
+        // ✅ 8. Hash password
+        const hashedPassword = await hashPassword(password);
+
+        // ✅ 9. Handle file upload for document (optional)
+        let docUploadPath = '';
+        if (req.file) {
+            docUploadPath = normalizeShipperTruckerPath(req.file.path);
+        } else {
+            console.log('📁 No file uploaded');
+        }
+
+        // ✅ 10. Create new customer record with department-based userType
+        const newCustomer = new ShipperDriver({
+            userType: userType, // Auto-set based on department
+            status: 'approved', // Auto-approve when added by department employee
+            statusUpdatedBy: inhouseUser.empId,
+            statusUpdatedAt: new Date(),
+            statusReason: `Approved by ${inhouseUser.department} department`,
+            addedBy: {
+                empId: inhouseUser.empId,
+                employeeName: inhouseUser.employeeName,
+                department: inhouseUser.department
+            },
+            agentIds: [inhouseUser.empId], // Add the department employee as agent
+            compName,
+            mc_dot_no,
+            carrierType,
+            fleetsize: fleetsize ? parseInt(fleetsize) : undefined,
+            compAdd,
+            country,
+            state,
+            city,
+            zipcode,
+            phoneNo,
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            docUpload: docUploadPath
+        });
+
+        await newCustomer.save();
+
+        // ✅ 11. Send approval email (since auto-approved)
+        try {
+            const emailSubject = `🎉 Account Approved - ${compName}`;
+            const emailMessage = generateStatusUpdateEmail(
+                compName, 
+                userType, 
+                'approved', 
+                email, 
+                `Account approved by ${inhouseUser.department} department - ${inhouseUser.employeeName}`
+            );
+
+            await sendEmail({
+                to: email,
+                subject: emailSubject,
+                html: emailMessage,
+            });
+
+            console.log('📧 Approval email sent to:', email);
+        } catch (emailError) {
+            console.error('❌ Email sending failed:', emailError);
+            // Don't fail the operation if email fails
+        }
+
+        // ✅ 12. Success response
+        res.status(201).json({
+            success: true,
+            message: `${departmentText} added successfully by ${inhouseUser.department} department employee`,
+            customer: {
+                userId: newCustomer.userId,
+                userType: newCustomer.userType,
+                compName: newCustomer.compName,
+                mc_dot_no: newCustomer.mc_dot_no,
+                email: newCustomer.email,
+                phoneNo: newCustomer.phoneNo,
+                status: newCustomer.status,
+                addedBy: newCustomer.addedBy
+            },
+            department: {
+                name: inhouseUser.department,
+                employee: inhouseUser.employeeName,
+                empId: inhouseUser.empId
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Error adding customer by department employee:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
+// 🔥 NEW: Get customers by department employee
+const getCustomersByDepartmentEmployee = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user belongs to CMT or Sales department
+        if (inhouseUser.department !== 'CMT' && inhouseUser.department !== 'Sales') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only CMT and Sales department employees can access this data'
+            });
+        }
+
+        // ✅ 3. Get empId from params or use current user's empId
+        const { empId } = req.params;
+        const targetEmpId = empId || inhouseUser.empId;
+
+        // ✅ 4. Check if user is trying to access other employee's data
+        if (empId && empId !== inhouseUser.empId) {
+            // Only allow if user is admin or superadmin
+            if (inhouseUser.role !== 'admin' && inhouseUser.role !== 'superadmin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You can only view customers added by yourself'
+                });
+            }
+        }
+
+        // ✅ 5. Find all customers added by this employee
+        const customers = await ShipperDriver.find({
+            'addedBy.empId': targetEmpId
+        }).select('-password').sort({ createdAt: -1 });
+
+        // ✅ 6. Filter by userType based on department
+        const expectedUserType = inhouseUser.department === 'CMT' ? 'trucker' : 'shipper';
+        const departmentCustomers = customers.filter(customer => customer.userType === expectedUserType);
+
+        // ✅ 7. Get employee details
+        const employeeDetails = {
+            empId: targetEmpId,
+            employeeName: customers.length > 0 ? customers[0].addedBy.employeeName : inhouseUser.employeeName,
+            department: customers.length > 0 ? customers[0].addedBy.department : inhouseUser.department
+        };
+
+        // ✅ 8. Calculate statistics
+        const totalCustomers = departmentCustomers.length;
+        const approvedCustomers = departmentCustomers.filter(c => c.status === 'approved').length;
+        const pendingCustomers = departmentCustomers.filter(c => c.status === 'pending').length;
+        const rejectedCustomers = departmentCustomers.filter(c => c.status === 'rejected').length;
+
+        // ✅ 9. Success response
+        res.status(200).json({
+            success: true,
+            message: `${expectedUserType.charAt(0).toUpperCase() + expectedUserType.slice(1)} details retrieved for ${employeeDetails.department} employee: ${employeeDetails.employeeName}`,
+            employee: employeeDetails,
+            department: inhouseUser.department,
+            expectedUserType: expectedUserType,
+            statistics: {
+                totalCustomers,
+                approvedCustomers,
+                pendingCustomers,
+                rejectedCustomers
+            },
+            customers: departmentCustomers.map(customer => ({
+                userId: customer.userId,
+                userType: customer.userType,
+                compName: customer.compName,
+                mc_dot_no: customer.mc_dot_no,
+                email: customer.email,
+                phoneNo: customer.phoneNo,
+                status: customer.status,
+                carrierType: customer.carrierType,
+                fleetsize: customer.fleetsize,
+                country: customer.country,
+                state: customer.state,
+                city: customer.city,
+                addedAt: customer.createdAt,
+                statusUpdatedAt: customer.statusUpdatedAt,
+                statusReason: customer.statusReason
+            }))
+        });
+
+    } catch (err) {
+        console.error('❌ Error getting customers by department employee:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
+// 🔥 NEW: Get Today's Customer Count by Department Employee
+const getTodayCustomerCount = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user belongs to CMT or Sales department
+        if (inhouseUser.department !== 'CMT' && inhouseUser.department !== 'Sales') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only CMT and Sales department employees can access this data'
+            });
+        }
+
+        // ✅ 3. Get empId from params or use current user's empId
+        const { empId } = req.params;
+        const targetEmpId = empId || inhouseUser.empId;
+
+        // ✅ 4. Check if user is trying to access other employee's data
+        if (empId && empId !== inhouseUser.empId) {
+            // Only allow if user is admin or superadmin
+            if (inhouseUser.role !== 'admin' && inhouseUser.role !== 'superadmin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You can only view your own customer count'
+                });
+            }
+        }
+
+        // ✅ 5. Set expected userType based on department
+        const expectedUserType = inhouseUser.department === 'CMT' ? 'trucker' : 'shipper';
+        const departmentText = inhouseUser.department === 'CMT' ? 'Trucker' : 'Shipper';
+
+        // ✅ 6. Get today's date range (start and end of day)
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+        // ✅ 7. Find customers added today by this employee
+        const todayCustomers = await ShipperDriver.find({
+            'addedBy.empId': targetEmpId,
+            userType: expectedUserType,
+            createdAt: {
+                $gte: startOfDay,
+                $lt: endOfDay
+            }
+        }).select('compName mc_dot_no email phoneNo status createdAt userType').sort({ createdAt: -1 });
+
+        // ✅ 8. Get employee details
+        const employeeDetails = {
+            empId: targetEmpId,
+            employeeName: inhouseUser.employeeName,
+            department: inhouseUser.department
+        };
+
+        // ✅ 9. Calculate today's statistics
+        const todayCount = todayCustomers.length;
+        const todayApproved = todayCustomers.filter(c => c.status === 'approved').length;
+        const todayPending = todayCustomers.filter(c => c.status === 'pending').length;
+        const todayRejected = todayCustomers.filter(c => c.status === 'rejected').length;
+
+        // ✅ 10. Get total customers count (all time) for comparison
+        const totalCustomers = await ShipperDriver.countDocuments({
+            'addedBy.empId': targetEmpId,
+            userType: expectedUserType
+        });
+
+        // ✅ 11. Get this week's count for trend analysis
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay()); // Start of current week (Sunday)
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const weekCustomers = await ShipperDriver.countDocuments({
+            'addedBy.empId': targetEmpId,
+            userType: expectedUserType,
+            createdAt: {
+                $gte: startOfWeek,
+                $lt: endOfDay
+            }
+        });
+
+        // ✅ 12. Success response
+        res.status(200).json({
+            success: true,
+            message: `Today's ${departmentText.toLowerCase()} count for ${employeeDetails.employeeName}`,
+            date: {
+                today: today.toISOString().split('T')[0], // YYYY-MM-DD format
+                startOfDay: startOfDay.toISOString(),
+                endOfDay: endOfDay.toISOString()
+            },
+            employee: employeeDetails,
+            department: inhouseUser.department,
+            expectedUserType: expectedUserType,
+            todayStats: {
+                totalAdded: todayCount,
+                approved: todayApproved,
+                pending: todayPending,
+                rejected: todayRejected
+            },
+            comparison: {
+                totalAllTime: totalCustomers,
+                thisWeek: weekCustomers,
+                todayVsWeek: todayCount,
+                todayVsTotal: todayCount
+            },
+            todayCustomers: todayCustomers.map(customer => ({
+                userType: customer.userType,
+                compName: customer.compName,
+                mc_dot_no: customer.mc_dot_no,
+                email: customer.email,
+                phoneNo: customer.phoneNo,
+                status: customer.status,
+                addedAt: customer.createdAt
+            }))
+        });
+
+    } catch (err) {
+        console.error('❌ Error getting today\'s customer count:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -1163,4 +1585,7 @@ export {
     addTruckerByCMTEmployee,
     getTruckersByCMTEmployee,
     getTodayTruckerCount,
+    addCustomerByDepartmentEmployee,
+    getCustomersByDepartmentEmployee,
+    getTodayCustomerCount,
 };

@@ -12,7 +12,10 @@ import {
   getAllUsersWithEmployeeInfo,
   addTruckerByCMTEmployee,
   getTruckersByCMTEmployee,
-  getTodayTruckerCount
+  getTodayTruckerCount,
+  addCustomerByDepartmentEmployee,
+  getCustomersByDepartmentEmployee,
+  getTodayCustomerCount
 } from '../controllers/shipper_driverController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -49,5 +52,28 @@ router.get('/cmt/truckers/:empId', isAuthenticatedEmployee, getTruckersByCMTEmpl
 // 🔥 NEW: Get Today's Trucker Count by CMT Employee
 router.get('/cmt/today-count', isAuthenticatedEmployee, getTodayTruckerCount); // Get current user's today count
 router.get('/cmt/today-count/:empId', isAuthenticatedEmployee, getTodayTruckerCount); // Get specific employee's today count
+
+// 🔥 NEW: Test route to check request body
+router.post('/department/test', isAuthenticatedEmployee, (req, res) => {
+    console.log('🔍 Test route - Request body:', req.body);
+    console.log('🔍 Test route - Request headers:', req.headers);
+    res.json({
+        success: true,
+        body: req.body,
+        headers: req.headers
+    });
+});
+
+
+// 🔥 NEW: Department-based customer addition (CMT=Trucker, Sales=Shipper)
+router.post('/department/add-customer', isAuthenticatedEmployee, shipperTruckerUpload.single('docUpload'), addCustomerByDepartmentEmployee);
+
+// 🔥 NEW: Get customers by department employee
+router.get('/department/customers', isAuthenticatedEmployee, getCustomersByDepartmentEmployee); // Get current user's customers
+router.get('/department/customers/:empId', isAuthenticatedEmployee, getCustomersByDepartmentEmployee); // Get specific employee's customers
+
+// 🔥 NEW: Get Today's Customer Count by Department Employee
+router.get('/department/today-count', isAuthenticatedEmployee, getTodayCustomerCount); // Get current user's today count
+router.get('/department/today-count/:empId', isAuthenticatedEmployee, getTodayCustomerCount); // Get specific employee's today count
 
 export default router;
