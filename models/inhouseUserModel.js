@@ -16,6 +16,14 @@ const employeeSchema = new mongoose.Schema({
   designation: { type: String, required: true },
   dateOfJoining: { type: Date, required: true },
 
+  // 💰 Basic Salary Field for HR
+  basicSalary: { 
+    type: Number, 
+    required: false,
+    min: 0,
+    default: 0
+  },
+
   identityDocs: {
     panCard: { type: String },
     aadharCard: { type: String },

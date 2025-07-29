@@ -44,6 +44,7 @@ export const createEmployee = async (req, res) => {
       department,
       designation,
       dateOfJoining,
+      basicSalary,
       accountHolderName,
       accountNumber,
       ifscCode,
@@ -118,6 +119,7 @@ export const createEmployee = async (req, res) => {
       department,
       designation,
       dateOfJoining: parsedDateOfJoining,
+      basicSalary: basicSalary ? Number(basicSalary) : 0,
       identityDocs: {
         panCard: pancardPath,
         aadharCard: aadharcardPath,
@@ -1009,6 +1011,53 @@ export const getThisMonthBirthdays = async (req, res) => {
       success: false,
       message: 'Error retrieving this month birthdays',
       error: error.message
+    });
+  }
+};
+
+// 💰 Update employee basic salary (HR function)
+export const updateEmployeeBasicSalary = async (req, res) => {
+  try {
+    const { empId } = req.params;
+    const { basicSalary } = req.body;
+
+    if (!basicSalary || isNaN(Number(basicSalary)) || Number(basicSalary) < 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Valid basic salary is required (must be a positive number)' 
+      });
+    }
+
+    const employee = await Employee.findOne({ empId });
+
+    if (!employee) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Employee not found' 
+      });
+    }
+
+    // Update basic salary
+    employee.basicSalary = Number(basicSalary);
+    await employee.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Basic salary updated successfully',
+      employee: {
+        empId: employee.empId,
+        employeeName: employee.employeeName,
+        department: employee.department,
+        designation: employee.designation,
+        basicSalary: employee.basicSalary,
+        updatedAt: employee.updatedAt
+      }
+    });
+  } catch (err) {
+    console.error('❌ Error updating basic salary:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: err.message 
     });
   }
 };

@@ -22,7 +22,8 @@ import {
   getMeetingsByEmpId,
   unassignModulesFromMaster,
   getNewJoiners,
-  getThisMonthBirthdays
+  getThisMonthBirthdays,
+  updateEmployeeBasicSalary
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -82,5 +83,8 @@ router.patch('/:empId/doc-verified', isAuthenticatedEmployee, updateDocVerifiedS
 router.post('/meetings', isAuthenticatedEmployee, createMeeting);
 router.get('/meetings', isAuthenticatedEmployee, getMeetings);
 router.get('/meetings/employee/:empId', isAuthenticatedEmployee, getMeetingsByEmpId);
+
+// 💰 Update employee basic salary (HR function)
+router.patch('/:empId/basic-salary', isAuthenticatedEmployee, isHRDepartment, updateEmployeeBasicSalary);
 
 export default router;
