@@ -5,7 +5,8 @@ import {
   generatePayroll,
   getAllPayrolls,
   getOwnPayroll,
-  markAsPaid
+  markAsPaid,
+  getPayrollsByMonth
 } from '../controllers/payrollController.js';
 
 const router = express.Router();
@@ -13,6 +14,7 @@ const router = express.Router();
 // HR/Admin access
 router.post('/', isAuthenticatedEmployee, isHRDepartment, generatePayroll);
 router.get('/', isAuthenticatedEmployee, isHRDepartment, getAllPayrolls);
+router.get('/month/:month', isAuthenticatedEmployee, isHRDepartment, getPayrollsByMonth);
 router.patch('/:id/paid', isAuthenticatedEmployee, isHRDepartment, markAsPaid);
 
 // Employee access

@@ -62,8 +62,24 @@ export const generatePayroll = async (req, res) => {
 // 📌 Get Payrolls by HR/Admin
 export const getAllPayrolls = async (req, res) => {
   try {
-    const records = await Payroll.find().sort({ month: -1 });
-    res.status(200).json({ success: true, records });
+    const { month } = req.query;
+    
+    // ✅ Build filter based on query parameters
+    const filter = {};
+    
+    // ✅ If month is provided, filter by that specific month
+    if (month) {
+      filter.month = month;
+    }
+    
+    const records = await Payroll.find(filter).sort({ month: -1, createdAt: -1 });
+    
+    res.status(200).json({ 
+      success: true, 
+      records,
+      filter: month ? `Filtered by month: ${month}` : 'All months',
+      totalRecords: records.length
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -88,6 +104,40 @@ export const markAsPaid = async (req, res) => {
     if (!updated) return res.status(404).json({ success: false, message: 'Payroll not found' });
 
     res.status(200).json({ success: true, payroll: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 📌 Get Payrolls by specific month
+export const getPayrollsByMonth = async (req, res) => {
+  try {
+    const { month } = req.params;
+    
+    if (!month) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Month parameter is required (format: YYYY-MM)' 
+      });
+    }
+    
+    // ✅ Validate month format (YYYY-MM)
+    const monthRegex = /^\d{4}-\d{2}$/;
+    if (!monthRegex.test(month)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid month format. Use YYYY-MM (e.g., 2025-08)' 
+      });
+    }
+    
+    const records = await Payroll.find({ month }).sort({ createdAt: -1 });
+    
+    res.status(200).json({ 
+      success: true, 
+      records,
+      month,
+      totalRecords: records.length
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
