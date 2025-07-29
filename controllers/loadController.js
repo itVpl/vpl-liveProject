@@ -1994,3 +1994,315 @@ export const getInhouseUserLoadDetails = async (req, res, next) => {
         next(error);
     }
 };
+
+// ✅ Sales user creates a load for their shipper
+export const createLoadBySalesUser = async (req, res, next) => {
+    try {
+        const {
+            fromCity, fromState,
+            toCity, toState,
+            weight, commodity, vehicleType, pickupDate, deliveryDate, rate, rateType,
+            bidDeadline,
+            loadType, // 'OTR' or 'DRAYAGE'
+            containerNo, poNumber, bolNumber,
+            returnDate, returnLocation
+        } = req.body;
+
+        // ✅ 1. Check if user is authenticated and is a sales employee
+        if (!req.user || !req.user.empId) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'User not authenticated' 
+            });
+        }
+
+        // ✅ 2. Check if user belongs to Sales department
+        if (req.user.department !== 'Sales') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Only Sales department employees can create loads for shippers' 
+            });
+        }
+
+        // ✅ 3. Validate required fields (same as shipper API)
+        if (!loadType || !['OTR', 'DRAYAGE'].includes(loadType)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'loadType (OTR or DRAYAGE) is required.' 
+            });
+        }
+
+        if (loadType === 'DRAYAGE' && (!returnDate || !returnLocation)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'returnDate and returnLocation are required for DRAYAGE loads.' 
+            });
+        }
+
+        // ✅ 4. Get shipper ID from request body (required for sales user)
+        const { shipperId } = req.body;
+        if (!shipperId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'shipperId is required for sales user load creation.' 
+            });
+        }
+
+        // ✅ 5. Verify that the shipper exists and is approved
+        const ShipperDriver = mongoose.model('ShipperDriver');
+        const shipper = await ShipperDriver.findById(shipperId);
+        
+        if (!shipper) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Shipper not found' 
+            });
+        }
+
+        if (shipper.status !== 'approved') {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Cannot create load for unapproved shipper' 
+            });
+        }
+
+        if (shipper.userType !== 'shipper') {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Can only create loads for shippers' 
+            });
+        }
+
+        // ✅ 6. Create the load with same structure as shipper API
+        const newLoad = new Load({
+            shipper: shipperId,
+            createdBySalesUser: {
+                empId: req.user.empId,
+                empName: req.user.employeeName,
+                department: req.user.department
+            },
+            origin: {
+                city: fromCity,
+                state: fromState,
+            },
+            destination: {
+                city: toCity,
+                state: toState,
+            },
+            weight,
+            commodity,
+            vehicleType,
+            pickupDate,
+            deliveryDate,
+            rate,
+            rateType,
+            bidDeadline,
+            loadType,
+            containerNo,
+            poNumber,
+            bolNumber,
+            returnDate: loadType === 'DRAYAGE' ? returnDate : null,
+            returnLocation: loadType === 'DRAYAGE' ? returnLocation : '',
+        });
+
+        await newLoad.save();
+
+        // ✅ 7. Send email notification to all approved truckers (same as shipper API)
+        try {
+            const truckers = await ShipperDriver.find({ userType: 'trucker', status: 'approved' }, 'email compName');
+            const subject = `New Load Posted - ${shipper.compName}`;
+            const html = `
+                <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                  <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                    <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">🚚 New Load Available</h1>
+                    <div style="background: #3498db; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                      <h2 style="margin: 0; font-size: 20px;">${shipper.compName}</h2>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                      <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Load Details</h3>
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                        <div>
+                          <strong style="color: #34495e;">📍 Origin:</strong><br>
+                          <span style="color: #7f8c8d;">${fromCity}, ${fromState}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">🎯 Destination:</strong><br>
+                          <span style="color: #7f8c8d;">${toCity}, ${toState}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">📦 Commodity:</strong><br>
+                          <span style="color: #7f8c8d;">${commodity}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">🚛 Vehicle Type:</strong><br>
+                          <span style="color: #7f8c8d;">${vehicleType}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">⚖️ Weight:</strong><br>
+                          <span style="color: #7f8c8d;">${weight} kg</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">💰 Rate:</strong><br>
+                          <span style="color: #7f8c8d;">$${rate} (${rateType})</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">📅 Pickup Date:</strong><br>
+                          <span style="color: #7f8c8d;">${pickupDate ? new Date(pickupDate).toLocaleDateString() : ''}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">📅 Delivery Date:</strong><br>
+                          <span style="color: #7f8c8d;">${deliveryDate ? new Date(deliveryDate).toLocaleDateString() : ''}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">🏷️ Load Type:</strong><br>
+                          <span style="color: #7f8c8d;">${loadType}</span>
+                        </div>
+                        ${loadType === 'DRAYAGE' ? `
+                        <div>
+                          <strong style="color: #34495e;">🔄 Return Date:</strong><br>
+                          <span style="color: #7f8c8d;">${returnDate ? new Date(returnDate).toLocaleDateString() : ''}</span>
+                        </div>
+                        <div>
+                          <strong style="color: #34495e;">📍 Return Location:</strong><br>
+                          <span style="color: #7f8c8d;">${returnLocation}</span>
+                        </div>
+                        ` : ''}
+                      </div>
+                    </div>
+                    
+                    <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                      <p style="margin: 0; color: #27ae60; font-weight: bold;">💡 Ready to place your bid?</p>
+                    </div>
+                    
+                    // <a href="https://vpl.com/load-board" style="background: linear-gradient(45deg, #667eea, #764ba2); color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; display: inline-block; font-weight: bold; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                    //   🚀 View Load Board
+                    // </a>
+                    
+                    <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                      Login to your VPL account to place your bid and win this load!
+                    </p>
+                  </div>
+                </div>
+            `;
+
+            for (const trucker of truckers) {
+                await sendEmail({
+                    to: trucker.email,
+                    subject,
+                    html
+                });
+            }
+            console.log(`📧 Notification sent to ${truckers.length} truckers.`);
+        } catch (emailError) {
+            console.error('❌ Error sending email notifications:', emailError);
+        }
+
+        // ✅ 8. Return same response structure as shipper API
+        res.status(201).json({
+            success: true,
+            message: 'Load posted successfully on load board',
+            load: newLoad,
+        });
+
+    } catch (error) {
+        console.error('❌ Error in createLoadBySalesUser:', error);
+        next(error);
+    }
+};
+
+// ✅ Get loads created by sales user
+export const getLoadsCreatedBySalesUser = async (req, res, next) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is a sales employee
+        if (!req.user || !req.user.empId) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Authentication required' 
+            });
+        }
+
+        // ✅ 2. Check if user belongs to Sales department
+        if (req.user.department !== 'Sales') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Only Sales department employees can access this data' 
+            });
+        }
+
+        const {
+            page = 1,
+            limit = 10,
+            status,
+            loadType,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // ✅ 3. Build filter to find loads created by this sales user
+        const filter = {
+            'createdBySalesUser.empId': req.user.empId
+        };
+
+        // Apply additional filters
+        if (status) {
+            filter.status = status;
+        }
+        if (loadType) {
+            filter.loadType = loadType;
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // ✅ 4. Find loads with populated shipper information
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName mc_dot_no city state email phoneNo')
+            .populate('assignedTo', 'compName mc_dot_no city state')
+            .populate('acceptedBid')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Load.countDocuments(filter);
+
+        // ✅ 5. Get statistics for this sales user
+        const totalLoads = await Load.countDocuments({ 'createdBySalesUser.empId': req.user.empId });
+        const postedLoads = await Load.countDocuments({ 
+            'createdBySalesUser.empId': req.user.empId, 
+            status: 'Posted' 
+        });
+        const assignedLoads = await Load.countDocuments({ 
+            'createdBySalesUser.empId': req.user.empId, 
+            status: 'Assigned' 
+        });
+        const deliveredLoads = await Load.countDocuments({ 
+            'createdBySalesUser.empId': req.user.empId, 
+            status: 'Delivered' 
+        });
+
+        res.status(200).json({
+            success: true,
+            loads,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page,
+            totalLoads: total,
+            statistics: {
+                totalLoads,
+                postedLoads,
+                assignedLoads,
+                deliveredLoads
+            },
+            salesUser: {
+                empId: req.user.empId,
+                empName: req.user.employeeName,
+                department: req.user.department
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error in getLoadsCreatedBySalesUser:', error);
+        next(error);
+    }
+};

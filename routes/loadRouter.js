@@ -31,7 +31,9 @@ import {
     showAllImages,
     resetLoadStatus,
     getInhouseUserLoads,
-    getInhouseUserLoadDetails
+    getInhouseUserLoadDetails,
+    createLoadBySalesUser,
+    getLoadsCreatedBySalesUser
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper, isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid, updateTrackingLocationByShipment as updateTrackingLocationByShipmentBid } from '../controllers/bidController.js';
@@ -65,6 +67,12 @@ loadRouter.put('/shipment/:shipmentNumber/reset-status', resetLoadStatus); // Re
 
 loadRouter.post('/create', isShipper, createLoad); 
 loadRouter.get('/shipper', isShipper, getShipperLoads); 
+
+// Sales user creates load for their shipper
+loadRouter.post('/create-by-sales', isAuthenticatedEmployee, createLoadBySalesUser);
+
+// Sales user gets loads they created
+loadRouter.get('/sales-user-loads', isAuthenticatedEmployee, getLoadsCreatedBySalesUser);
 
 // Inhouse user routes
 loadRouter.get('/inhouse', isAuthenticatedEmployee, getInhouseUserLoads);

@@ -7,6 +7,12 @@ const loadSchema = new mongoose.Schema({
     required: false,
     default: null,
   },
+  // 🔥 NEW: Sales user details who created this load
+  createdBySalesUser: {
+    empId: { type: String },
+    empName: { type: String },
+    department: { type: String, enum: ['Sales'] }
+  },
   origin: {
     addressLine1: { type: String },
     addressLine2: { type: String },
