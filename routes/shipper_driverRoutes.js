@@ -19,7 +19,9 @@ import {
   approveByAccountant,
   approveByManager,
   rejectTrucker,
-  getAllTruckersSimple
+  getAllTruckersSimple,
+  assignUsersToCustomer,
+  getAssignedUsersForCustomer
 } from '../controllers/shipper_driverController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -80,6 +82,13 @@ router.post('/cmt/add-customer-with-documents', isAuthenticatedEmployee, cmtDocu
 // 🔥 NEW: Get customers by department employee
 router.get('/department/customers', isAuthenticatedEmployee, getCustomersByDepartmentEmployee); // Get current user's customers
 router.get('/department/customers/:empId', isAuthenticatedEmployee, getCustomersByDepartmentEmployee); // Get specific employee's customers
+
+// 🔥 NEW: Assign users to customer (POST and PUT both supported)
+router.post('/customer/assign-users', isAuthenticatedEmployee, assignUsersToCustomer);
+router.put('/customer/assign-users', isAuthenticatedEmployee, assignUsersToCustomer);
+
+// 🔥 NEW: Get assigned users for a customer
+router.get('/customer/:customerId/assigned-users', isAuthenticatedEmployee, getAssignedUsersForCustomer);
 
 // 🔥 NEW: Get Today's Customer Count by Department Employee
 router.get('/department/today-count', isAuthenticatedEmployee, getTodayCustomerCount); // Get current user's today count

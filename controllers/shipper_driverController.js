@@ -1237,8 +1237,13 @@ const getTodayTruckerCount = async (req, res) => {
 // 🔥 NEW: Accountant Approval for CMT Truckers
 const approveByAccountant = async (req, res) => {
     try {
-        // ✅ 1. No authentication required - anyone can approve
-        const accountant = { empId: 'anonymous', employeeName: 'Anonymous User', department: 'Unknown' };
+        // ✅ 1. Get user information from request body or use default
+        const { approvedBy, approvedByName, department } = req.body;
+        const accountant = { 
+            empId: approvedBy || 'anonymous', 
+            employeeName: approvedByName || 'Anonymous User', 
+            department: department || 'Unknown' 
+        };
 
         // ✅ 3. Get trucker ID from request
         const { truckerId } = req.params;
@@ -1351,8 +1356,13 @@ const approveByAccountant = async (req, res) => {
 // 🔥 NEW: Manager Approval for CMT Truckers
 const approveByManager = async (req, res) => {
     try {
-        // ✅ 1. No authentication required - anyone can approve
-        const manager = { empId: 'anonymous', employeeName: 'Anonymous User', department: 'Unknown' };
+        // ✅ 1. Get user information from request body or use default
+        const { approvedBy, approvedByName, department } = req.body;
+        const manager = { 
+            empId: approvedBy || 'anonymous', 
+            employeeName: approvedByName || 'Anonymous User', 
+            department: department || 'Unknown' 
+        };
 
         // ✅ 3. Get trucker ID from request
         const { truckerId } = req.params;
@@ -1464,8 +1474,13 @@ const approveByManager = async (req, res) => {
 // 🔥 NEW: Reject Trucker (by Accountant or Manager)
 const rejectTrucker = async (req, res) => {
     try {
-        // ✅ 1. No authentication required - anyone can reject
-        const user = { empId: 'anonymous', employeeName: 'Anonymous User', department: 'Unknown' };
+        // ✅ 1. Get user information from request body or use default
+        const { rejectedBy, rejectedByName, department } = req.body;
+        const user = { 
+            empId: rejectedBy || 'anonymous', 
+            employeeName: rejectedByName || 'Anonymous User', 
+            department: department || 'Unknown' 
+        };
 
         // ✅ 3. Get trucker ID and rejection reason from request
         const { truckerId } = req.params;
@@ -1820,6 +1835,200 @@ const addCustomerByDepartmentEmployee = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Assign additional users to a customer
+const assignUsersToCustomer = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse employee
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user has permission (admin, superadmin, or the one who added the customer)
+        if (inhouseUser.role !== 'admin' && inhouseUser.role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Only admins and superadmins can assign users to customers'
+            });
+        }
+
+        // ✅ 3. Get customer ID and user IDs from request
+        const { customerId, userIds, action } = req.body;
+
+        if (!customerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Customer ID is required'
+            });
+        }
+
+        if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'User IDs array is required and must not be empty'
+            });
+        }
+
+        if (!action || !['add', 'remove'].includes(action)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Action must be either "add" or "remove"'
+            });
+        }
+
+        // ✅ 4. Find the customer
+        const customer = await ShipperDriver.findById(customerId);
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: 'Customer not found'
+            });
+        }
+
+        // ✅ 5. Verify that the users exist
+        const { Employee } = await import('../models/inhouseUserModel.js');
+        const users = await Employee.find({ empId: { $in: userIds } });
+        
+        if (users.length !== userIds.length) {
+            const foundUserIds = users.map(u => u.empId);
+            const missingUserIds = userIds.filter(id => !foundUserIds.includes(id));
+            
+            return res.status(400).json({
+                success: false,
+                message: 'Some users not found',
+                missingUserIds
+            });
+        }
+
+        // ✅ 6. Update customer's agentIds based on action
+        let updatedAgentIds = [...(customer.agentIds || [])];
+        
+        if (action === 'add') {
+            // Add new users (avoid duplicates)
+            userIds.forEach(userId => {
+                if (!updatedAgentIds.includes(userId)) {
+                    updatedAgentIds.push(userId);
+                }
+            });
+        } else if (action === 'remove') {
+            // Remove specified users
+            updatedAgentIds = updatedAgentIds.filter(id => !userIds.includes(id));
+        }
+
+        // ✅ 7. Update the customer
+        customer.agentIds = updatedAgentIds;
+        await customer.save();
+
+        // ✅ 8. Get updated customer info
+        const updatedCustomer = await ShipperDriver.findById(customerId)
+            .select('-password');
+
+        // ✅ 9. Success response
+        res.status(200).json({
+            success: true,
+            message: `Users ${action === 'add' ? 'assigned to' : 'removed from'} customer successfully`,
+            customer: {
+                _id: updatedCustomer._id,
+                userId: updatedCustomer.userId,
+                compName: updatedCustomer.compName,
+                userType: updatedCustomer.userType,
+                status: updatedCustomer.status,
+                agentIds: updatedCustomer.agentIds,
+                addedBy: updatedCustomer.addedBy
+            },
+            action: {
+                type: action,
+                userIds: userIds,
+                totalAssignedUsers: updatedAgentIds.length
+            },
+            assignedUsers: users.map(user => ({
+                empId: user.empId,
+                employeeName: user.employeeName,
+                department: user.department,
+                role: user.role
+            }))
+        });
+
+    } catch (err) {
+        console.error('❌ Error assigning users to customer:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
+// 🔥 NEW: Get assigned users for a customer
+const getAssignedUsersForCustomer = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated
+        const inhouseUser = req.user;
+        if (!inhouseUser || !inhouseUser.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Get customer ID from params
+        const { customerId } = req.params;
+
+        if (!customerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Customer ID is required'
+            });
+        }
+
+        // ✅ 3. Find the customer
+        const customer = await ShipperDriver.findById(customerId)
+            .select('-password');
+            
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: 'Customer not found'
+            });
+        }
+
+        // ✅ 4. Get assigned users details
+        const { Employee } = await import('../models/inhouseUserModel.js');
+        const assignedUsers = await Employee.find({ 
+            empId: { $in: customer.agentIds || [] } 
+        }).select('empId employeeName department role');
+
+        // ✅ 5. Success response
+        res.status(200).json({
+            success: true,
+            message: 'Assigned users retrieved successfully',
+            customer: {
+                _id: customer._id,
+                userId: customer.userId,
+                compName: customer.compName,
+                userType: customer.userType,
+                status: customer.status
+            },
+            assignedUsers: {
+                count: assignedUsers.length,
+                users: assignedUsers
+            },
+            agentIds: customer.agentIds || []
+        });
+
+    } catch (err) {
+        console.error('❌ Error getting assigned users for customer:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 // 🔥 NEW: Get customers by department employee
 const getCustomersByDepartmentEmployee = async (req, res) => {
     try {
@@ -1891,6 +2100,7 @@ const getCustomersByDepartmentEmployee = async (req, res) => {
                 rejectedCustomers
             },
             customers: departmentCustomers.map(customer => ({
+                _id: customer._id,
                 userId: customer.userId,
                 userType: customer.userType,
                 compName: customer.compName,
@@ -2131,5 +2341,7 @@ export {
     approveByAccountant,
     approveByManager,
     rejectTrucker,
-    getAllTruckersSimple
+    getAllTruckersSimple,
+    assignUsersToCustomer,
+    getAssignedUsersForCustomer
 };
