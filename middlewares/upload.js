@@ -187,6 +187,37 @@ const driverRegisterUpload = multer({
   { name: 'cdlDocument', maxCount: 1 }
 ]);
 
+// 🔥 NEW: Multiple document upload for CMT users adding shipper_driver
+const cmtDocumentUpload = multer({
+  storage: isS3Configured ? getS3Storage(req => `cmtDocuments/${(req.body.compName || 'unknown').replace(/[^a-z0-9]/gi, '_')}`) : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(__dirname, '../uploads/cmtDocuments');
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const timestamp = Date.now();
+      const fileName = `${file.fieldname}_${timestamp}${ext}`;
+      cb(null, fileName);
+    }
+  }),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'brokeragePacket', maxCount: 1 },
+  { name: 'carrierPartnerAgreement', maxCount: 1 },
+  { name: 'w9Form', maxCount: 1 },
+  { name: 'mcAuthority', maxCount: 1 },
+  { name: 'safetyLetter', maxCount: 1 },
+  { name: 'bankingInfo', maxCount: 1 },
+  { name: 'inspectionLetter', maxCount: 1 },
+  { name: 'insurance', maxCount: 1 },
+  { name: 'docUpload', maxCount: 1 } // Keep existing single document upload for backward compatibility
+]);
+
 const getS3Url = (key) => {
   if (!key || !isS3Configured) return '';
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
@@ -206,6 +237,13 @@ const normalizeShipperTruckerPath = (pathStr) => {
   return pathStr;
 };
 
+const normalizeCMTDocumentPath = (pathStr) => {
+  if (!pathStr) return '';
+  if (pathStr.startsWith('http')) return pathStr;
+  if (isS3Configured && pathStr.includes('cmtDocuments')) return getS3Url(pathStr);
+  return pathStr;
+};
+
 const normalizeChatFilePath = (pathStr) => {
   if (!pathStr) return '';
   if (pathStr.startsWith('http')) return pathStr;
@@ -216,6 +254,7 @@ const normalizeChatFilePath = (pathStr) => {
 export {
   normalizePath,
   normalizeShipperTruckerPath,
+  normalizeCMTDocumentPath,
   normalizeChatFilePath,
   employeeUpload,
   shipperTruckerUpload,
@@ -227,5 +266,6 @@ export {
   driverDropLocationUpload,
   getS3Url,
   chatFileUpload,
-  driverRegisterUpload
+  driverRegisterUpload,
+  cmtDocumentUpload
 };

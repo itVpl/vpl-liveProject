@@ -1,6 +1,6 @@
 import ShipperDriver from '../models/shipper_driverModel.js';
 import hashPassword from '../utils/hashPassword.js';
-import { normalizeShipperTruckerPath } from '../middlewares/upload.js';
+import { normalizeShipperTruckerPath, normalizeCMTDocumentPath } from '../middlewares/upload.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../utils/sendEmail.js';
@@ -847,19 +847,65 @@ const addTruckerByCMTEmployee = async (req, res) => {
         // ✅ 7. Hash password
         const hashedPassword = await hashPassword(password);
 
-        // ✅ 8. Handle file upload for document
+        // ✅ 8. Handle file uploads for documents
         let docUploadPath = '';
+        let documents = {};
+        
+        // Debug: Log all request information
+        
+        // Handle single document upload (backward compatibility)
         if (req.file) {
             docUploadPath = normalizeShipperTruckerPath(req.file.path);
+            console.log('📁 Single file uploaded:', docUploadPath);
+        }
+        
+        // Handle multiple document uploads (new functionality)
+        if (req.files) {
+            console.log('📁 Multiple files uploaded:', Object.keys(req.files));
+            console.log('📁 Files details:', JSON.stringify(req.files, null, 2));
+            
+            // Process each document type
+            const documentTypes = [
+                'brokeragePacket',
+                'carrierPartnerAgreement', 
+                'w9Form',
+                'mcAuthority',
+                'safetyLetter',
+                'bankingInfo',
+                'inspectionLetter',
+                'insurance'
+            ];
+            
+            documentTypes.forEach(docType => {
+                if (req.files[docType] && req.files[docType][0]) {
+                    const file = req.files[docType][0];
+                    console.log(`📄 Processing ${docType}:`, {
+                        originalname: file.originalname,
+                        filename: file.filename,
+                        path: file.path,
+                        location: file.location
+                    });
+                    
+                    // Try different path properties
+                    const filePath = file.location || file.path || file.filename;
+                    const normalizedPath = normalizeCMTDocumentPath(filePath);
+                    documents[docType] = normalizedPath;
+                    console.log(`📄 ${docType} uploaded:`, normalizedPath);
+                } else {
+                    console.log(`❌ ${docType} not found in uploaded files`);
+                }
+            });
+        } else {
+            console.log('❌ No files found in req.files');
         }
 
         // ✅ 9. Create new trucker record
         const newTrucker = new ShipperDriver({
             userType: 'trucker', // Always set as trucker
-            status: 'approved', // Auto-approve when added by CMT employee
+            status: 'pending', // Set as pending for review
             statusUpdatedBy: inhouseUser.empId,
             statusUpdatedAt: new Date(),
-            statusReason: 'Approved by CMT department',
+            statusReason: 'Added by CMT department - Pending for approval',
             addedBy: {
                 empId: inhouseUser.empId,
                 employeeName: inhouseUser.employeeName,
@@ -878,20 +924,21 @@ const addTruckerByCMTEmployee = async (req, res) => {
             phoneNo,
             email: email.toLowerCase(),
             password: hashedPassword,
-            docUpload: docUploadPath
+            docUpload: docUploadPath,
+            documents: documents // Add the new documents object
         });
 
         await newTrucker.save();
 
-        // ✅ 10. Send approval email (since auto-approved)
+        // ✅ 10. Send registration confirmation email (pending status)
         try {
-            const emailSubject = `🎉 Account Approved - ${compName}`;
+            const emailSubject = `📋 Account Created - ${compName}`;
             const emailMessage = generateStatusUpdateEmail(
                 compName, 
                 'trucker', 
-                'approved', 
+                'pending', 
                 email, 
-                'Account approved by CMT department - ' + inhouseUser.employeeName
+                'Account created by CMT department - ' + inhouseUser.employeeName + ' (Pending for approval)'
             );
 
             await sendEmail({
@@ -900,7 +947,7 @@ const addTruckerByCMTEmployee = async (req, res) => {
                 html: emailMessage,
             });
 
-            console.log('📧 Approval email sent to:', email);
+            console.log('📧 Registration confirmation email sent to:', email);
         } catch (emailError) {
             console.error('❌ Email sending failed:', emailError);
             // Don't fail the operation if email fails
@@ -909,7 +956,7 @@ const addTruckerByCMTEmployee = async (req, res) => {
         // ✅ 11. Success response
         res.status(201).json({
             success: true,
-            message: 'Trucker added successfully by CMT employee',
+            message: 'Trucker added successfully by CMT employee - Status: Pending for approval',
             trucker: {
                 userId: newTrucker.userId,
                 compName: newTrucker.compName,
@@ -917,7 +964,18 @@ const addTruckerByCMTEmployee = async (req, res) => {
                 email: newTrucker.email,
                 phoneNo: newTrucker.phoneNo,
                 status: newTrucker.status,
+                statusReason: newTrucker.statusReason,
                 addedBy: newTrucker.addedBy
+            },
+            documents: {
+                uploaded: Object.keys(documents),
+                totalUploaded: Object.keys(documents).length,
+                documentTypes: documents
+            },
+            nextSteps: {
+                message: 'Trucker account is pending for approval',
+                actionRequired: 'Admin/Superadmin needs to review and approve the account',
+                estimatedTime: 'Usually processed within 24-48 hours'
             }
         });
 
@@ -985,7 +1043,16 @@ const getTruckersByCMTEmployee = async (req, res) => {
         const pendingTruckers = truckers.filter(t => t.status === 'pending').length;
         const rejectedTruckers = truckers.filter(t => t.status === 'rejected').length;
 
-        // ✅ 8. Success response
+        // ✅ 8. Calculate document statistics
+        const truckersWithDocuments = truckers.filter(t => t.documents && Object.keys(t.documents).some(key => t.documents[key]));
+        const totalDocuments = truckers.reduce((total, t) => {
+            if (t.documents) {
+                return total + Object.keys(t.documents).filter(key => t.documents[key]).length;
+            }
+            return total;
+        }, 0);
+
+        // ✅ 9. Success response
         res.status(200).json({
             success: true,
             message: `Trucker details retrieved for CMT employee: ${employeeDetails.employeeName}`,
@@ -994,7 +1061,9 @@ const getTruckersByCMTEmployee = async (req, res) => {
                 totalTruckers,
                 approvedTruckers,
                 pendingTruckers,
-                rejectedTruckers
+                rejectedTruckers,
+                truckersWithDocuments: truckersWithDocuments.length,
+                totalDocuments
             },
             truckers: truckers.map(trucker => ({
                 userId: trucker.userId,
@@ -1010,7 +1079,23 @@ const getTruckersByCMTEmployee = async (req, res) => {
                 city: trucker.city,
                 addedAt: trucker.createdAt,
                 statusUpdatedAt: trucker.statusUpdatedAt,
-                statusReason: trucker.statusReason
+                statusReason: trucker.statusReason,
+                // 🔥 NEW: Add documents information
+                documents: trucker.documents || {},
+                docUpload: trucker.docUpload || '',
+                documentCount: trucker.documents ? Object.keys(trucker.documents).filter(key => trucker.documents[key]).length : 0,
+                uploadedDocuments: trucker.documents ? Object.keys(trucker.documents).filter(key => trucker.documents[key]) : [],
+                // 🔥 NEW: Document preview information
+                documentPreview: trucker.documents ? Object.keys(trucker.documents).reduce((acc, key) => {
+                    if (trucker.documents[key]) {
+                        acc[key] = {
+                            url: trucker.documents[key],
+                            fileName: trucker.documents[key].split('/').pop(),
+                            fileType: trucker.documents[key].split('.').pop().toUpperCase()
+                        };
+                    }
+                    return acc;
+                }, {}) : {}
             }))
         });
 
@@ -1149,6 +1234,396 @@ const getTodayTruckerCount = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Accountant Approval for CMT Truckers
+const approveByAccountant = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an accountant
+        const accountant = req.user;
+        if (!accountant || !accountant.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user is admin or superadmin (removed department restriction)
+        if (accountant.role !== 'admin' && accountant.role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only admin or superadmin can approve truckers'
+            });
+        }
+
+        // ✅ 3. Get trucker ID from request
+        const { truckerId } = req.params;
+        const { approvalReason } = req.body;
+
+        if (!truckerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Trucker ID is required'
+            });
+        }
+
+        // ✅ 4. Find the trucker
+        const trucker = await ShipperDriver.findOne({ 
+            userId: truckerId,
+            userType: 'trucker'
+        });
+
+        if (!trucker) {
+            return res.status(404).json({
+                success: false,
+                message: 'Trucker not found'
+            });
+        }
+
+        // ✅ 5. Check if trucker is in pending status
+        if (trucker.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: `Trucker is already ${trucker.status}. Cannot approve.`
+            });
+        }
+
+        // ✅ 6. Update trucker status to accountant_approved
+        trucker.status = 'accountant_approved';
+        trucker.statusUpdatedBy = accountant.empId;
+        trucker.statusUpdatedAt = new Date();
+        trucker.statusReason = `Approved by ${accountant.employeeName} (${accountant.department})${approvalReason ? `: ${approvalReason}` : ''}`;
+        
+        // Add approval history
+        if (!trucker.approvalHistory) {
+            trucker.approvalHistory = [];
+        }
+        trucker.approvalHistory.push({
+            step: 'accountant_approval',
+            status: 'approved',
+            approvedBy: accountant.empId,
+            approvedByName: accountant.employeeName,
+            approvedAt: new Date(),
+            reason: approvalReason || 'Accountant approval'
+        });
+
+        await trucker.save();
+
+        // ✅ 7. Send notification email
+        try {
+            const emailSubject = `📋 Accountant Approval - ${trucker.compName}`;
+            const emailMessage = generateStatusUpdateEmail(
+                trucker.compName, 
+                'trucker', 
+                'accountant_approved', 
+                trucker.email, 
+                `Approved by ${accountant.employeeName} (${accountant.department})${approvalReason ? `: ${approvalReason}` : ''}`
+            );
+
+            await sendEmail({
+                to: trucker.email,
+                subject: emailSubject,
+                html: emailMessage,
+            });
+
+            console.log('📧 Accountant approval email sent to:', trucker.email);
+        } catch (emailError) {
+            console.error('❌ Email sending failed:', emailError);
+        }
+
+        // ✅ 8. Success response
+        res.status(200).json({
+            success: true,
+            message: 'Trucker approved by Accountant successfully',
+            trucker: {
+                userId: trucker.userId,
+                compName: trucker.compName,
+                status: trucker.status,
+                statusReason: trucker.statusReason,
+                approvedBy: {
+                    empId: accountant.empId,
+                    employeeName: accountant.employeeName,
+                    department: accountant.department
+                }
+            },
+            nextStep: {
+                message: 'Trucker approved by Accountant',
+                actionRequired: 'Manager approval required',
+                currentStep: 'accountant_approved',
+                nextStep: 'manager_approval'
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Error approving trucker by Accountant:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
+// 🔥 NEW: Manager Approval for CMT Truckers
+const approveByManager = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is a manager
+        const manager = req.user;
+        if (!manager || !manager.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user is admin or superadmin (removed department restriction)
+        if (manager.role !== 'admin' && manager.role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only admin or superadmin can approve truckers'
+            });
+        }
+
+        // ✅ 3. Get trucker ID from request
+        const { truckerId } = req.params;
+        const { approvalReason } = req.body;
+
+        if (!truckerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Trucker ID is required'
+            });
+        }
+
+        // ✅ 4. Find the trucker
+        const trucker = await ShipperDriver.findOne({ 
+            userId: truckerId,
+            userType: 'trucker'
+        });
+
+        if (!trucker) {
+            return res.status(404).json({
+                success: false,
+                message: 'Trucker not found'
+            });
+        }
+
+        // ✅ 5. Check if trucker is in accountant_approved status
+        if (trucker.status !== 'accountant_approved') {
+            return res.status(400).json({
+                success: false,
+                message: `Trucker status is ${trucker.status}. Must be accountant_approved for manager approval.`
+            });
+        }
+
+        // ✅ 6. Update trucker status to approved
+        trucker.status = 'approved';
+        trucker.statusUpdatedBy = manager.empId;
+        trucker.statusUpdatedAt = new Date();
+        trucker.statusReason = `Approved by ${manager.employeeName} (${manager.department})${approvalReason ? `: ${approvalReason}` : ''}`;
+        
+        // Add approval history
+        if (!trucker.approvalHistory) {
+            trucker.approvalHistory = [];
+        }
+        trucker.approvalHistory.push({
+            step: 'manager_approval',
+            status: 'approved',
+            approvedBy: manager.empId,
+            approvedByName: manager.employeeName,
+            approvedAt: new Date(),
+            reason: approvalReason || 'Manager approval'
+        });
+
+        await trucker.save();
+
+        // ✅ 7. Send approval email
+        try {
+            const emailSubject = `🎉 Account Approved - ${trucker.compName}`;
+            const emailMessage = generateStatusUpdateEmail(
+                trucker.compName, 
+                'trucker', 
+                'approved', 
+                trucker.email, 
+                `Approved by ${manager.employeeName} (${manager.department})${approvalReason ? `: ${approvalReason}` : ''}`
+            );
+
+            await sendEmail({
+                to: trucker.email,
+                subject: emailSubject,
+                html: emailMessage,
+            });
+
+            console.log('📧 Final approval email sent to:', trucker.email);
+        } catch (emailError) {
+            console.error('❌ Email sending failed:', emailError);
+        }
+
+        // ✅ 8. Success response
+        res.status(200).json({
+            success: true,
+            message: 'Trucker approved by Manager successfully',
+            trucker: {
+                userId: trucker.userId,
+                compName: trucker.compName,
+                status: trucker.status,
+                statusReason: trucker.statusReason,
+                approvedBy: {
+                    empId: manager.empId,
+                    employeeName: manager.employeeName,
+                    department: manager.department
+                }
+            },
+            finalStatus: {
+                message: 'Trucker account is fully approved',
+                status: 'approved',
+                canLogin: true
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Error approving trucker by Manager:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
+// 🔥 NEW: Reject Trucker (by Accountant or Manager)
+const rejectTrucker = async (req, res) => {
+    try {
+        // ✅ 1. Check if user is authenticated
+        const user = req.user;
+        if (!user || !user.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user is admin or superadmin (removed department restriction)
+        if (user.role !== 'admin' && user.role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only admin or superadmin can reject truckers'
+            });
+        }
+
+        // ✅ 3. Get trucker ID and rejection reason from request
+        const { truckerId } = req.params;
+        const { rejectionReason } = req.body;
+
+        if (!truckerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Trucker ID is required'
+            });
+        }
+
+        if (!rejectionReason) {
+            return res.status(400).json({
+                success: false,
+                message: 'Rejection reason is required'
+            });
+        }
+
+        // ✅ 4. Find the trucker
+        const trucker = await ShipperDriver.findOne({ 
+            userId: truckerId,
+            userType: 'trucker'
+        });
+
+        if (!trucker) {
+            return res.status(404).json({
+                success: false,
+                message: 'Trucker not found'
+            });
+        }
+
+        // ✅ 5. Check if trucker can be rejected
+        if (trucker.status === 'approved' || trucker.status === 'rejected') {
+            return res.status(400).json({
+                success: false,
+                message: `Trucker is already ${trucker.status}. Cannot reject.`
+            });
+        }
+
+        // ✅ 6. Update trucker status to rejected
+        trucker.status = 'rejected';
+        trucker.statusUpdatedBy = user.empId;
+        trucker.statusUpdatedAt = new Date();
+        trucker.statusReason = `Rejected by ${user.employeeName} (${user.department}): ${rejectionReason}`;
+        
+        // Add rejection history
+        if (!trucker.approvalHistory) {
+            trucker.approvalHistory = [];
+        }
+        trucker.approvalHistory.push({
+            step: `${user.department.toLowerCase()}_rejection`,
+            status: 'rejected',
+            rejectedBy: user.empId,
+            rejectedByName: user.employeeName,
+            rejectedAt: new Date(),
+            reason: rejectionReason
+        });
+
+        await trucker.save();
+
+        // ✅ 7. Send rejection email
+        try {
+            const emailSubject = `❌ Account Rejected - ${trucker.compName}`;
+            const emailMessage = generateStatusUpdateEmail(
+                trucker.compName, 
+                'trucker', 
+                'rejected', 
+                trucker.email, 
+                `Rejected by ${user.employeeName} (${user.department}): ${rejectionReason}`
+            );
+
+            await sendEmail({
+                to: trucker.email,
+                subject: emailSubject,
+                html: emailMessage,
+            });
+
+            console.log('📧 Rejection email sent to:', trucker.email);
+        } catch (emailError) {
+            console.error('❌ Email sending failed:', emailError);
+        }
+
+        // ✅ 8. Success response
+        res.status(200).json({
+            success: true,
+            message: 'Trucker rejected successfully',
+            trucker: {
+                userId: trucker.userId,
+                compName: trucker.compName,
+                status: trucker.status,
+                statusReason: trucker.statusReason,
+                rejectedBy: {
+                    empId: user.empId,
+                    employeeName: user.employeeName,
+                    department: user.department
+                }
+            },
+            rejection: {
+                reason: rejectionReason,
+                rejectedBy: user.employeeName,
+                department: user.department,
+                rejectedAt: new Date()
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Error rejecting trucker:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 // 🔥 NEW: Department-based customer addition (CMT=Trucker, Sales=Shipper)
 const addCustomerByDepartmentEmployee = async (req, res) => {
     try {
@@ -1248,21 +1723,49 @@ const addCustomerByDepartmentEmployee = async (req, res) => {
         // ✅ 8. Hash password
         const hashedPassword = await hashPassword(password);
 
-        // ✅ 9. Handle file upload for document (optional)
+        // ✅ 9. Handle file uploads for documents
         let docUploadPath = '';
+        let documents = {};
+        
+        // Handle single document upload (backward compatibility)
         if (req.file) {
             docUploadPath = normalizeShipperTruckerPath(req.file.path);
-        } else {
-            console.log('📁 No file uploaded');
+        }
+        
+        // Handle multiple document uploads (new functionality)
+        if (req.files) {
+            console.log('📁 Multiple files uploaded:', Object.keys(req.files));
+            
+            // Process each document type
+            const documentTypes = [
+                'brokeragePacket',
+                'carrierPartnerAgreement', 
+                'w9Form',
+                'mcAuthority',
+                'safetyLetter',
+                'bankingInfo',
+                'inspectionLetter',
+                'insurance'
+            ];
+            
+            documentTypes.forEach(docType => {
+                if (req.files[docType] && req.files[docType][0]) {
+                    const filePath = normalizeCMTDocumentPath(req.files[docType][0].path);
+                    documents[docType] = filePath;
+                    console.log(`📄 ${docType} uploaded:`, filePath);
+                }
+            });
         }
 
         // ✅ 10. Create new customer record with department-based userType
         const newCustomer = new ShipperDriver({
             userType: userType, // Auto-set based on department
-            status: 'approved', // Auto-approve when added by department employee
+            status: inhouseUser.department === 'CMT' ? 'pending' : 'approved', // CMT = pending, Sales = approved
             statusUpdatedBy: inhouseUser.empId,
             statusUpdatedAt: new Date(),
-            statusReason: `Approved by ${inhouseUser.department} department`,
+            statusReason: inhouseUser.department === 'CMT' 
+                ? `Added by ${inhouseUser.department} department - Pending for approval`
+                : `Approved by ${inhouseUser.department} department`,
             addedBy: {
                 empId: inhouseUser.empId,
                 employeeName: inhouseUser.employeeName,
@@ -1281,20 +1784,27 @@ const addCustomerByDepartmentEmployee = async (req, res) => {
             phoneNo,
             email: email.toLowerCase(),
             password: hashedPassword,
-            docUpload: docUploadPath
+            docUpload: docUploadPath,
+            documents: documents // Add the new documents object
         });
 
         await newCustomer.save();
 
-        // ✅ 11. Send approval email (since auto-approved)
+        // ✅ 11. Send email notification based on department
         try {
-            const emailSubject = `🎉 Account Approved - ${compName}`;
+            const isPending = inhouseUser.department === 'CMT';
+            const emailSubject = isPending 
+                ? `📋 Account Created - ${compName}` 
+                : `🎉 Account Approved - ${compName}`;
+            
             const emailMessage = generateStatusUpdateEmail(
                 compName, 
                 userType, 
-                'approved', 
+                isPending ? 'pending' : 'approved', 
                 email, 
-                `Account approved by ${inhouseUser.department} department - ${inhouseUser.employeeName}`
+                isPending 
+                    ? `Account created by ${inhouseUser.department} department - ${inhouseUser.employeeName} (Pending for approval)`
+                    : `Account approved by ${inhouseUser.department} department - ${inhouseUser.employeeName}`
             );
 
             await sendEmail({
@@ -1303,16 +1813,17 @@ const addCustomerByDepartmentEmployee = async (req, res) => {
                 html: emailMessage,
             });
 
-            console.log('📧 Approval email sent to:', email);
+            console.log(`📧 ${isPending ? 'Registration confirmation' : 'Approval'} email sent to:`, email);
         } catch (emailError) {
             console.error('❌ Email sending failed:', emailError);
             // Don't fail the operation if email fails
         }
 
         // ✅ 12. Success response
+        const isPending = inhouseUser.department === 'CMT';
         res.status(201).json({
             success: true,
-            message: `${departmentText} added successfully by ${inhouseUser.department} department employee`,
+            message: `${departmentText} added successfully by ${inhouseUser.department} department employee${isPending ? ' - Status: Pending for approval' : ''}`,
             customer: {
                 userId: newCustomer.userId,
                 userType: newCustomer.userType,
@@ -1321,13 +1832,24 @@ const addCustomerByDepartmentEmployee = async (req, res) => {
                 email: newCustomer.email,
                 phoneNo: newCustomer.phoneNo,
                 status: newCustomer.status,
+                statusReason: newCustomer.statusReason,
                 addedBy: newCustomer.addedBy
+            },
+            documents: {
+                uploaded: Object.keys(documents),
+                totalUploaded: Object.keys(documents).length,
+                documentTypes: documents
             },
             department: {
                 name: inhouseUser.department,
                 employee: inhouseUser.employeeName,
                 empId: inhouseUser.empId
-            }
+            },
+            nextSteps: isPending ? {
+                message: `${departmentText} account is pending for approval`,
+                actionRequired: 'Admin/Superadmin needs to review and approve the account',
+                estimatedTime: 'Usually processed within 24-48 hours'
+            } : null
         });
 
     } catch (err) {
@@ -1588,4 +2110,7 @@ export {
     addCustomerByDepartmentEmployee,
     getCustomersByDepartmentEmployee,
     getTodayCustomerCount,
+    approveByAccountant,
+    approveByManager,
+    rejectTrucker
 };

@@ -14,7 +14,7 @@ const shipperDriverSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'accountant_approved', 'approved', 'rejected'],
     default: 'pending',
   },
   statusUpdatedBy: {
@@ -29,6 +29,24 @@ const shipperDriverSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // 🔥 NEW: Approval history for tracking approval flow
+  approvalHistory: [{
+    step: {
+      type: String,
+      enum: ['accountant_approval', 'manager_approval', 'accountant_rejection', 'manager_rejection']
+    },
+    status: {
+      type: String,
+      enum: ['approved', 'rejected']
+    },
+    approvedBy: String,
+    approvedByName: String,
+    approvedAt: Date,
+    rejectedBy: String,
+    rejectedByName: String,
+    rejectedAt: Date,
+    reason: String
+  }],
   // 🔥 New: Reference to employee who added this shipper/trucker
   addedBy: {
     empId: {
@@ -69,6 +87,17 @@ const shipperDriverSchema = new mongoose.Schema({
     required: true,
   },
   docUpload: String,
+  // 🔥 NEW: Additional document uploads for CMT users
+  documents: {
+    brokeragePacket: String,
+    carrierPartnerAgreement: String,
+    w9Form: String,
+    mcAuthority: String,
+    safetyLetter: String,
+    bankingInfo: String,
+    inspectionLetter: String,
+    insurance: String
+  }
 }, { timestamps: true });
 
 const ShipperDriver = mongoose.model('ShipperDriver', shipperDriverSchema);
