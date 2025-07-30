@@ -1237,22 +1237,8 @@ const getTodayTruckerCount = async (req, res) => {
 // 🔥 NEW: Accountant Approval for CMT Truckers
 const approveByAccountant = async (req, res) => {
     try {
-        // ✅ 1. Check if user is authenticated and is an accountant
-        const accountant = req.user;
-        if (!accountant || !accountant.empId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-
-        // ✅ 2. Check if user is admin or superadmin (removed department restriction)
-        if (accountant.role !== 'admin' && accountant.role !== 'superadmin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admin or superadmin can approve truckers'
-            });
-        }
+        // ✅ 1. No authentication required - anyone can approve
+        const accountant = { empId: 'anonymous', employeeName: 'Anonymous User', department: 'Unknown' };
 
         // ✅ 3. Get trucker ID from request
         const { truckerId } = req.params;
@@ -1365,22 +1351,8 @@ const approveByAccountant = async (req, res) => {
 // 🔥 NEW: Manager Approval for CMT Truckers
 const approveByManager = async (req, res) => {
     try {
-        // ✅ 1. Check if user is authenticated and is a manager
-        const manager = req.user;
-        if (!manager || !manager.empId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-
-        // ✅ 2. Check if user is admin or superadmin (removed department restriction)
-        if (manager.role !== 'admin' && manager.role !== 'superadmin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admin or superadmin can approve truckers'
-            });
-        }
+        // ✅ 1. No authentication required - anyone can approve
+        const manager = { empId: 'anonymous', employeeName: 'Anonymous User', department: 'Unknown' };
 
         // ✅ 3. Get trucker ID from request
         const { truckerId } = req.params;
@@ -1492,22 +1464,8 @@ const approveByManager = async (req, res) => {
 // 🔥 NEW: Reject Trucker (by Accountant or Manager)
 const rejectTrucker = async (req, res) => {
     try {
-        // ✅ 1. Check if user is authenticated
-        const user = req.user;
-        if (!user || !user.empId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-
-        // ✅ 2. Check if user is admin or superadmin (removed department restriction)
-        if (user.role !== 'admin' && user.role !== 'superadmin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admin or superadmin can reject truckers'
-            });
-        }
+        // ✅ 1. No authentication required - anyone can reject
+        const user = { empId: 'anonymous', employeeName: 'Anonymous User', department: 'Unknown' };
 
         // ✅ 3. Get trucker ID and rejection reason from request
         const { truckerId } = req.params;
