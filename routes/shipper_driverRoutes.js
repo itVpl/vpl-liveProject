@@ -18,7 +18,8 @@ import {
   getTodayCustomerCount,
   approveByAccountant,
   approveByManager,
-  rejectTrucker
+  rejectTrucker,
+  getAllTruckersSimple
 } from '../controllers/shipper_driverController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -93,5 +94,8 @@ router.patch('/approval/manager/:truckerId', approveByManager);
 
 // Reject Trucker (Accountant or Manager)
 router.patch('/approval/reject/:truckerId', rejectTrucker);
+
+// 🔥 NEW: Get all truckers (simple API - no authentication required)
+router.get('/all-truckers', getAllTruckersSimple);
 
 export default router;

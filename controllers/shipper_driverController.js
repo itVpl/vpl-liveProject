@@ -2093,6 +2093,66 @@ const getTodayCustomerCount = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Get all truckers (simple API)
+const getAllTruckersSimple = async (req, res) => {
+    try {
+        // ✅ 1. Get all truckers
+        const truckers = await ShipperDriver.find({ userType: 'trucker' })
+            .select('-password')
+            .sort({ createdAt: -1 });
+
+        // ✅ 2. Calculate statistics
+        const totalTruckers = truckers.length;
+        const pendingTruckers = truckers.filter(t => t.status === 'pending').length;
+        const approvedTruckers = truckers.filter(t => t.status === 'approved').length;
+        const accountantApprovedTruckers = truckers.filter(t => t.status === 'accountant_approved').length;
+        const rejectedTruckers = truckers.filter(t => t.status === 'rejected').length;
+
+        // ✅ 3. Success response
+        res.status(200).json({
+            success: true,
+            message: 'All truckers retrieved successfully',
+            statistics: {
+                totalTruckers,
+                pendingTruckers,
+                approvedTruckers,
+                accountantApprovedTruckers,
+                rejectedTruckers
+            },
+            truckers: truckers.map(trucker => ({
+                _id: trucker._id,
+                userId: trucker.userId,
+                compName: trucker.compName,
+                mc_dot_no: trucker.mc_dot_no,
+                email: trucker.email,
+                phoneNo: trucker.phoneNo,
+                status: trucker.status,
+                statusReason: trucker.statusReason,
+                carrierType: trucker.carrierType,
+                fleetsize: trucker.fleetsize,
+                country: trucker.country,
+                state: trucker.state,
+                city: trucker.city,
+                zipcode: trucker.zipcode,
+                addedAt: trucker.createdAt,
+                statusUpdatedAt: trucker.statusUpdatedAt,
+                addedBy: trucker.addedBy,
+                documents: trucker.documents || {},
+                documentCount: trucker.documents ? Object.keys(trucker.documents).filter(key => trucker.documents[key]).length : 0,
+                uploadedDocuments: trucker.documents ? Object.keys(trucker.documents).filter(key => trucker.documents[key]) : []
+            }))
+        });
+
+    } catch (err) {
+        console.error('❌ Error getting all truckers:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: err.message
+        });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -2112,5 +2172,6 @@ export {
     getTodayCustomerCount,
     approveByAccountant,
     approveByManager,
-    rejectTrucker
+    rejectTrucker,
+    getAllTruckersSimple
 };
