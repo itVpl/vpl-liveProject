@@ -32,6 +32,7 @@ import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import dayTargetRoutes from './routes/dayTargetRoutes.js';
+import hrActivityRoutes from './routes/hrActivityRoutes.js';
 import rateLimit from 'express-rate-limit';
 import doRoutes from './routes/doRoutes.js';
 
@@ -43,15 +44,6 @@ const _dirname = path.dirname(_filename);
 
 
 
-// const allowedOrigins = [
-//   ...(process.env.CLIENT_URL?.split(',') || []),
-//   "http://192.168.1.7:5173",
-//   "https://vpl-liveproject-1.onrender.com",
-//   "https://vpowersuperadmin.netlify.app",
-//   "https://6863ec860b4af45ad160da8e--fluffy-fenglisu-36edff.netlify.app",
-//   "http://localhost:5173",
-//   "https://fluffy-fenglisu-36edff.netlify.app"
-// ];
 
 
 const allowedOrigins = [
@@ -62,17 +54,6 @@ const allowedOrigins = [
     'https://vpower.netlify.app',
 ];
 
-// app.use(cors({
-//     origin: function (origin, callback) {
-//         if (!origin || allowedOrigins.includes(origin)) {
-//             callback(null, true);
-//         } else {
-//             callback(new Error('Not allowed by CORS'));
-//         }
-//     },
-//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-//     credentials: true
-// }));
 
 
 app.use(cors({
@@ -92,35 +73,6 @@ app.use(cors({
 
 
 
-
-// app.use(cors({
-//   origin: function (origin, callback) {
-//     if (!origin) return callback(null, true); // allow server-to-server or Postman
-
-//     if (allowedOrigins.includes(origin)) {
-//       return callback(null, true);
-//     } else {
-//       return callback(new Error('Not allowed by CORS'));
-//     }
-//   },
-//   credentials: true,
-//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-//   allowedHeaders: ['Content-Type', 'Authorization'],
-//   optionsSuccessStatus: 200
-
-// }));
-
-
-
-
-// app.options('/*', cors());
-
-
-// app.use(cors({
-//     origin: process.env.CLIENT_URL,
-//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-//     credentials: true,
-// }));
 
 app.use(cookieParser());
 
@@ -184,6 +136,7 @@ app.use('/api/v1/dailytask', dailyTaskRoutes);
 app.use('/api/v1/email-inbox', emailInboxRoutes);
 app.use('/api/v1/meeting', meetingRoutes);
 app.use('/api/v1/daytarget', dayTargetRoutes);
+app.use('/api/v1/hr-activity', hrActivityRoutes);
 setInterval(checkOverdueBreaks, 60000);
 
 // Daily target automation - run every day at 9 AM
