@@ -13,7 +13,19 @@ export const applyLeave = async (req, res) => {
 
     // Convert dates to user's timezone
     const fromDateTz = moment.tz(fromDate, userTimezone).startOf('day').toDate();
-    const toDateTz = moment.tz(toDate, userTimezone).endOf('day').toDate();
+    
+    // Check if fromDate and toDate are the same day
+    const fromMoment = moment.tz(fromDate, userTimezone);
+    const toMoment = moment.tz(toDate, userTimezone);
+    
+    let toDateTz;
+    if (fromMoment.isSame(toMoment, 'day')) {
+      // Same day leave - use startOf('day') for both to avoid timezone issues
+      toDateTz = moment.tz(toDate, userTimezone).startOf('day').toDate();
+    } else {
+      // Multi-day leave - use endOf('day') for the end date
+      toDateTz = moment.tz(toDate, userTimezone).endOf('day').toDate();
+    }
 
     // ✅ 1. Validate Dates
     if (fromDateTz > toDateTz) {
