@@ -1839,3 +1839,421 @@ export const updateTargetReason = async (req, res) => {
     });
   }
 };
+
+// 📊 Monthly Progress Report - Complete monthly performance analysis
+export const getMonthlyProgress = async (req, res) => {
+  try {
+    const { empId } = req.params;
+    const { month, year } = req.query; // month: 1-12, year: 2024
+    
+    console.log('🔍 Debug - empId:', empId);
+    console.log('🔍 Debug - month:', month);
+    console.log('🔍 Debug - year:', year);
+    
+    // Validate parameters
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Month (1-12) and Year (YYYY) are required'
+      });
+    }
+
+    // Calculate month date range
+    const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+    const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
+    
+    console.log(`📊 Monthly Progress for ${empId} - ${month}/${year}`);
+    console.log(`📅 Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+    // Get employee details
+    console.log('🔍 Debug - Employee model:', typeof Employee);
+    const employee = await Employee.findOne({ empId });
+    console.log('🔍 Debug - Employee found:', employee);
+    
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // 1. Check for overdue breaks in the month
+    console.log('🔍 Debug - Importing BreakLog...');
+    const BreakLog = (await import('../models/BreakLog.js')).default;
+    console.log('🔍 Debug - BreakLog model:', typeof BreakLog);
+    
+    const overdueBreaks = await BreakLog.find({
+      empId,
+      startTime: { $gte: startDate, $lte: endDate },
+      overdue: true
+    });
+    console.log('🔍 Debug - Overdue breaks found:', overdueBreaks.length);
+
+    const hasOverdueBreaks = overdueBreaks.length > 0;
+    const overdueBreaksCount = overdueBreaks.length;
+
+    // 2. Check daily targets completion using existing report APIs
+    console.log('🔍 Debug - Getting daily targets from existing APIs...');
+    
+    let totalTargets = 0;
+    let completedTargets = 0;
+    let targetDetails = [];
+
+    // Get all working days in the month
+    const workingDays = getWorkingDaysInMonth(parseInt(year), parseInt(month));
+    const workingDates = [];
+    
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Skip weekends
+        workingDates.push(new Date(d.getTime()));
+      }
+    }
+
+    console.log('🔍 Debug - Working dates:', workingDates.length);
+
+    // Check each working day for targets
+    for (const date of workingDates) {
+      const dateStr = date.toISOString().split('T')[0];
+      
+      try {
+        let dailyTarget = {
+          date: dateStr,
+          status: 'pending',
+          completionType: 'pending',
+          progress: 0
+        };
+
+        // Check based on department
+        if (employee.department === 'Sales') {
+          // Get sales report for this date
+          const salesReport = await getSalesReportForDate(empId, dateStr);
+          if (salesReport) {
+            dailyTarget = {
+              date: dateStr,
+              status: salesReport.status,
+              completionType: salesReport.status === 'completed' ? 'completed' : 'partial',
+              progress: salesReport.targets ? 
+                ((salesReport.targets.talkTime.completed ? 50 : 0) + 
+                 (salesReport.targets.deliveryOrders.completed ? 50 : 0)) : 0
+            };
+          }
+        } else if (employee.department === 'CMT') {
+          // Get CMT report for this date
+          const cmtReport = await getCMTReportForDate(empId, dateStr);
+          if (cmtReport) {
+            dailyTarget = {
+              date: dateStr,
+              status: cmtReport.status,
+              completionType: cmtReport.status === 'completed' ? 'completed' : 'partial',
+              progress: cmtReport.targets ? 
+                ((cmtReport.targets.talkTime.completed ? 50 : 0) + 
+                 (cmtReport.targets.truckers.completed ? 50 : 0)) : 0
+            };
+          }
+        }
+
+        targetDetails.push(dailyTarget);
+        totalTargets++;
+        if (dailyTarget.status === 'completed') {
+          completedTargets++;
+        }
+      } catch (error) {
+        console.log(`❌ Error getting target for ${dateStr}:`, error.message);
+        targetDetails.push({
+          date: dateStr,
+          status: 'pending',
+          completionType: 'pending',
+          progress: 0
+        });
+        totalTargets++;
+      }
+    }
+
+    const overdueTargets = targetDetails.filter(target => target.status === 'overdue').length;
+    const pendingTargets = targetDetails.filter(target => 
+      target.status === 'pending' || target.status === 'incomplete'
+    ).length;
+
+    // 3. Check attendance (present days)
+    console.log('🔍 Debug - Importing UserActivity...');
+    const { UserActivity } = await import('../models/userActivityModel.js');
+    console.log('🔍 Debug - UserActivity model:', typeof UserActivity);
+    
+    const attendanceRecords = await UserActivity.find({
+      empId,
+      date: { $gte: startDate, $lte: endDate }
+    });
+    console.log('🔍 Debug - Attendance records found:', attendanceRecords.length);
+
+    // Calculate daily attendance
+    const dailyAttendance = {};
+    attendanceRecords.forEach(record => {
+      const dateKey = record.date.toISOString().split('T')[0];
+      if (!dailyAttendance[dateKey]) {
+        dailyAttendance[dateKey] = 0;
+      }
+      
+      if (record.loginTime && record.logoutTime) {
+        const hours = (new Date(record.logoutTime) - new Date(record.loginTime)) / (1000 * 60 * 60);
+        dailyAttendance[dateKey] += hours;
+      }
+    });
+
+    // Count present days (8+ hours = present day)
+    let presentDays = 0;
+    let halfDays = 0;
+    let absentDays = 0;
+
+    Object.values(dailyAttendance).forEach(hours => {
+      if (hours >= 8) {
+        presentDays++;
+      } else if (hours > 0) {
+        halfDays++;
+      } else {
+        absentDays++;
+      }
+    });
+
+    // Calculate total working days in month
+    const totalDaysInMonth = endDate.getDate();
+    const workingDaysInMonth = getWorkingDaysInMonth(parseInt(year), parseInt(month));
+
+    // 4. Calculate overall progress score
+    const breakScore = hasOverdueBreaks ? 0 : 100;
+    const targetScore = totalTargets > 0 ? (completedTargets / totalTargets) * 100 : 100;
+    const attendanceScore = workingDaysInMonth > 0 ? (presentDays / workingDaysInMonth) * 100 : 100;
+    
+    const overallScore = Math.round((breakScore + targetScore + attendanceScore) / 3);
+
+    // 5. Determine monthly status
+    let monthlyStatus = 'excellent';
+    let statusMessage = '';
+
+    if (hasOverdueBreaks) {
+      monthlyStatus = 'poor';
+      statusMessage = 'Has overdue breaks';
+    } else if (overallScore >= 90) {
+      monthlyStatus = 'excellent';
+      statusMessage = 'Outstanding performance';
+    } else if (overallScore >= 80) {
+      monthlyStatus = 'good';
+      statusMessage = 'Good performance';
+    } else if (overallScore >= 70) {
+      monthlyStatus = 'average';
+      statusMessage = 'Average performance';
+    } else {
+      monthlyStatus = 'poor';
+      statusMessage = 'Needs improvement';
+    }
+
+    // 6. Prepare detailed breakdown
+    const monthlyProgress = {
+      empId: employee.empId,
+      employeeName: employee.employeeName,
+      department: employee.department,
+      month: parseInt(month),
+      year: parseInt(year),
+      period: {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        totalDaysInMonth,
+        workingDaysInMonth
+      },
+      breakAnalysis: {
+        hasOverdueBreaks,
+        overdueBreaksCount,
+        score: breakScore,
+        details: overdueBreaks.map(breakLog => ({
+          date: breakLog.startTime.toISOString().split('T')[0],
+          duration: breakLog.durationMinutes,
+          overdue: breakLog.overdue
+        }))
+      },
+      targetAnalysis: {
+        totalTargets,
+        completedTargets,
+        overdueTargets,
+        pendingTargets,
+        completionRate: totalTargets > 0 ? Math.round((completedTargets / totalTargets) * 100) : 100,
+        score: targetScore,
+        details: targetDetails
+      },
+      attendanceAnalysis: {
+        presentDays,
+        halfDays,
+        absentDays,
+        attendanceRate: workingDaysInMonth > 0 ? Math.round((presentDays / workingDaysInMonth) * 100) : 100,
+        score: attendanceScore,
+        details: Object.entries(dailyAttendance).map(([date, hours]) => ({
+          date,
+          hours: Math.round(hours * 100) / 100,
+          status: hours >= 8 ? 'present' : hours > 0 ? 'half-day' : 'absent'
+        }))
+      },
+      overallProgress: {
+        score: overallScore,
+        status: monthlyStatus,
+        statusMessage,
+        breakdown: {
+          breakScore,
+          targetScore,
+          attendanceScore
+        }
+      },
+      requirements: {
+        noOverdueBreaks: !hasOverdueBreaks,
+        allTargetsCompleted: completedTargets === totalTargets && totalTargets > 0,
+        fullAttendance: presentDays >= workingDaysInMonth,
+        allRequirementsMet: !hasOverdueBreaks && completedTargets === totalTargets && presentDays >= workingDaysInMonth
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: `Monthly progress report for ${employee.employeeName} - ${month}/${year}`,
+      data: monthlyProgress
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getMonthlyProgress:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Helper function to get sales report for a specific date
+const getSalesReportForDate = async (empId, date) => {
+  try {
+    // Simulate the sales report logic
+    const targetDate = new Date(date);
+    const start = new Date(targetDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(targetDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Get talktime for this employee
+    const employee = await Employee.findOne({ empId });
+    if (!employee) return null;
+
+    const userAlias = employee.aliasName || employee.employeeName;
+    const callData = await getUserTalkTime(userAlias, date);
+    const talkTimeHours = callData.totalTalkTime / 60;
+
+    // Get delivery orders count for this employee
+    const DO = (await import('../models/doModel.js')).default;
+    const deliveryOrdersCount = await DO.countDocuments({
+      'createdBySalesUser.empId': empId,
+      createdAt: { $gte: start, $lt: end }
+    });
+
+    // Calculate status
+    const minTalkTimeHours = 3;
+    const minDeliveryOrders = 1;
+    
+    const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+    const deliveryOrdersCompleted = deliveryOrdersCount >= minDeliveryOrders;
+    
+    let status = 'incomplete';
+    if (talkTimeCompleted && deliveryOrdersCompleted) {
+      status = 'completed';
+    }
+
+    return {
+      status,
+      targets: {
+        talkTime: {
+          required: minTalkTimeHours,
+          current: talkTimeHours,
+          completed: talkTimeCompleted
+        },
+        deliveryOrders: {
+          required: minDeliveryOrders,
+          current: deliveryOrdersCount,
+          completed: deliveryOrdersCompleted
+        }
+      }
+    };
+  } catch (error) {
+    console.error('❌ Error in getSalesReportForDate:', error);
+    return null;
+  }
+};
+
+// Helper function to get CMT report for a specific date
+const getCMTReportForDate = async (empId, date) => {
+  try {
+    // Simulate the CMT report logic
+    const targetDate = new Date(date);
+    const start = new Date(targetDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(targetDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Get talktime for this employee
+    const employee = await Employee.findOne({ empId });
+    if (!employee) return null;
+
+    const userAlias = employee.aliasName || employee.employeeName;
+    const callData = await getUserTalkTime(userAlias, date);
+    const talkTimeHours = callData.totalTalkTime / 60;
+
+    // Get trucker count for this employee
+    const ShipperDriver = (await import('../models/shipper_driverModel.js')).default;
+    const truckerCount = await ShipperDriver.countDocuments({
+      'addedBy.empId': empId,
+      userType: 'trucker',
+      createdAt: { $gte: start, $lt: end }
+    });
+
+    // Calculate status
+    const minTalkTimeHours = 1.5;
+    const minTruckerCount = 4;
+    
+    const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+    const truckerCompleted = truckerCount >= minTruckerCount;
+    
+    let status = 'incomplete';
+    if (talkTimeCompleted && truckerCompleted) {
+      status = 'completed';
+    }
+
+    return {
+      status,
+      targets: {
+        talkTime: {
+          required: minTalkTimeHours,
+          current: talkTimeHours,
+          completed: talkTimeCompleted
+        },
+        truckers: {
+          required: minTruckerCount,
+          current: truckerCount,
+          completed: truckerCompleted
+        }
+      }
+    };
+  } catch (error) {
+    console.error('❌ Error in getCMTReportForDate:', error);
+    return null;
+  }
+};
+
+// Helper function to calculate working days in a month
+const getWorkingDaysInMonth = (year, month) => {
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+  let workingDays = 0;
+  
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    // 0 = Sunday, 6 = Saturday
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      workingDays++;
+    }
+  }
+  
+  return workingDays;
+};

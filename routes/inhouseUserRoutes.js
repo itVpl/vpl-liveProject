@@ -26,7 +26,8 @@ import {
   updateEmployeeBasicSalary,
   getCMTDepartmentReport,
   getSalesDepartmentReport,
-  updateTargetReason
+  updateTargetReason,
+  getMonthlyProgress
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -98,5 +99,8 @@ router.get('/sales/report', isAuthenticatedEmployee, getSalesDepartmentReport);
 
 // 📝 Update reason for incomplete target
 router.post('/target/reason', isAuthenticatedEmployee, updateTargetReason);
+
+// 📊 Monthly Progress Report - Complete monthly performance analysis
+router.get('/:empId/monthly-progress', isAuthenticatedEmployee, getMonthlyProgress);
 
 export default router;
