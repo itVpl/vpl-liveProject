@@ -134,7 +134,103 @@
 
 import axios from 'axios';
 import qs from 'qs';
-import { DateTime } from 'luxon'; // for timezone-based date
+import { DateTime } from 'luxon';
+
+// 🔥 NEW: Helper function to get talktime for specific user
+export const getUserTalkTime = async (userAlias, targetDate) => {
+  try {
+    console.log(`🔄 Getting talktime for user: ${userAlias} on date: ${targetDate}`);
+
+    // Set time range for the target date
+    const startTime = DateTime.fromISO(targetDate).startOf('day').toFormat('yyyy-MM-dd HH:mm:ss');
+    const endTime = DateTime.fromISO(targetDate).endOf('day').toFormat('yyyy-MM-dd HH:mm:ss');
+
+    // 🔐 Step 1: Get Token
+    const tokenRes = await axios.post(
+      'https://api.8x8.com/analytics/work/v1/oauth/token',
+      qs.stringify({
+        grant_type: 'password',
+        username: 'EastonMPT',
+        password: 'VPLeaston@18'
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          '8x8-apikey': 'eght_OTI3M2RlYjgtNGE1Zi00MTI1LTk0OTAtMGMwOWNjOTBkY2Mw'
+        }
+      }
+    );
+
+    const accessToken = tokenRes.data.access_token;
+    console.log('✅ 8x8 Token received');
+
+    // 📞 Step 2: Fetch Call Records
+    const dataRes = await axios.get(
+      'https://api.8x8.com/analytics/work/v2/call-records',
+      {
+        params: {
+          pbxId: 'allpbxes',
+          startTime: startTime,
+          endTime: endTime,
+          timeZone: 'America/New_York',
+          pageSize: 1500
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          '8x8-apikey': 'eght_OTI3M2RlYjgtNGE1Zi00MTI1LTk0OTAtMGMwOWNjOTBkY2Mw'
+        }
+      }
+    );
+
+    const allRecords = dataRes.data.data || [];
+    console.log(`✅ Total call records fetched: ${allRecords.length}`);
+
+    // Filter records for specific user alias
+    const userRecords = allRecords.filter(record => {
+      const callerName = (record.callerName || '').toLowerCase();
+      const calleeName = (record.calleeName || '').toLowerCase();
+      const userAliasLower = userAlias.toLowerCase();
+      
+      return callerName.includes(userAliasLower) || calleeName.includes(userAliasLower);
+    });
+
+    console.log(`✅ Filtered records for ${userAlias}: ${userRecords.length}`);
+
+    // Calculate call statistics
+    let totalCalls = 0;
+    let totalTalkTime = 0;
+    let totalDuration = 0;
+
+    userRecords.forEach(record => {
+      // Check if call was answered and has talk time
+      if (record.answered === 'Answered' && record.talkTimeMS && record.talkTimeMS > 0) {
+        totalCalls++;
+        
+        // Calculate talk time in minutes (talkTimeMS is in milliseconds)
+        const durationMinutes = Math.round(record.talkTimeMS / (1000 * 60));
+        totalTalkTime += durationMinutes;
+        totalDuration += record.talkTimeMS;
+      }
+    });
+
+    return {
+      totalCalls,
+      totalTalkTime: Math.round(totalTalkTime), // in minutes
+      totalDuration, // in milliseconds
+      callRecords: userRecords
+    };
+
+  } catch (error) {
+    console.error('❌ Error fetching talktime from 8x8:', error.message);
+    return {
+      totalCalls: 0,
+      totalTalkTime: 0,
+      totalDuration: 0,
+      callRecords: [],
+      error: error.message
+    };
+  }
+}; // for timezone-based date
 
 // 🔹 GET ALL CALL RECORDS (with optional from/to in query)
 export const getCallRecords = async (req, res) => {
