@@ -9,6 +9,8 @@ import { loginTemplate } from '../utils/templates/loginTemplate.js';
 import { logoutTemplate } from '../utils/templates/logoutTemplate.js';
 import { sendEmail } from '../utils/sendEmail.js';
 import Meeting from '../models/Meeting.js';
+import { getUserTalkTime } from './analytics8x8Controller.js';
+import ShipperDriver from '../models/shipper_driverModel.js';
 
 // Helper function to format date
 const formatDate = (date) => {
@@ -1062,6 +1064,778 @@ export const updateEmployeeBasicSalary = async (req, res) => {
   }
 };
 
+// 📊 CMT Department Report - Date-wise talktime and trucker count
+export const getCMTDepartmentReport = async (req, res) => {
+  try {
+    const { date, empId } = req.query;
+    
+    // Validate date parameter
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date parameter is required (format: YYYY-MM-DD)'
+      });
+    }
 
+    // Parse target date
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
 
+    // Set date range for the target date
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
 
+    // Get CMT department employees
+    const cmtEmployees = await Employee.find({
+      department: 'CMT',
+      status: 'active'
+    }).select('empId employeeName aliasName department designation email mobileNo');
+
+    if (cmtEmployees.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No CMT department employees found',
+        data: {
+          date: date,
+          totalEmployees: 0,
+          employees: []
+        }
+      });
+    }
+
+    // Get report for specific employee if empId provided
+    if (empId) {
+      const employee = cmtEmployees.find(emp => emp.empId === empId);
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: 'CMT employee not found with provided empId'
+        });
+      }
+
+      // Get talktime for this employee
+      const userAlias = employee.aliasName || employee.employeeName;
+      const callData = await getUserTalkTime(userAlias, date);
+      const talkTimeHours = callData.totalTalkTime / 60; // Convert minutes to hours
+
+      // Get trucker count for this employee
+      const truckerCount = await ShipperDriver.countDocuments({
+        'addedBy.empId': employee.empId,
+        userType: 'trucker',
+        createdAt: { $gte: targetDate, $lt: nextDay }
+      });
+
+      // Calculate status for individual employee
+      const minTalkTimeHours = 1.5; // 1.5 hours required
+      const minTruckerCount = 4; // 4 truckers required
+      
+      const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+      const truckerCompleted = truckerCount >= minTruckerCount;
+      
+      let status = 'incomplete';
+      let statusMessage = '';
+      
+      if (talkTimeCompleted && truckerCompleted) {
+        status = 'completed';
+        statusMessage = 'All daily targets completed';
+      } else if (talkTimeCompleted && !truckerCompleted) {
+        status = 'incomplete';
+        statusMessage = `Talktime completed (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h), but truckers incomplete (${truckerCount}/${minTruckerCount})`;
+      } else if (!talkTimeCompleted && truckerCompleted) {
+        status = 'incomplete';
+        statusMessage = `Truckers completed (${truckerCount}/${minTruckerCount}), but talktime incomplete (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h)`;
+      } else {
+        status = 'incomplete';
+        statusMessage = `Both talktime (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h) and truckers (${truckerCount}/${minTruckerCount}) incomplete`;
+      }
+
+      // Add reason field for incomplete status
+      let reason = null;
+      if (status === 'incomplete') {
+        const { TargetReason } = await import('../models/targetReasonModel.js');
+        const reasonDoc = await TargetReason.findOne({ 
+          empId: employee.empId, 
+          date: targetDate 
+        });
+        reason = reasonDoc ? reasonDoc.reason : 'Reason not provided yet';
+      }
+
+      const employeeReport = {
+        empId: employee.empId,
+        employeeName: employee.employeeName,
+        aliasName: employee.aliasName,
+        department: employee.department,
+        designation: employee.designation,
+        date: date,
+        status: status,
+        statusMessage: statusMessage,
+        reason: reason,
+        talkTime: {
+          hours: talkTimeHours,
+          minutes: callData.totalTalkTime,
+          formatted: `${Math.floor(talkTimeHours)}h ${Math.round((talkTimeHours % 1) * 60)}m`
+        },
+        truckerCount: truckerCount,
+        targets: {
+          talkTime: {
+            required: minTalkTimeHours,
+            current: talkTimeHours,
+            completed: talkTimeCompleted,
+            remaining: Math.max(0, minTalkTimeHours - talkTimeHours)
+          },
+          truckers: {
+            required: minTruckerCount,
+            current: truckerCount,
+            completed: truckerCompleted,
+            remaining: Math.max(0, minTruckerCount - truckerCount)
+          }
+        },
+        createdAt: new Date()
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: `CMT Department Report for ${employee.employeeName} on ${date}`,
+        data: employeeReport
+      });
+    }
+
+    // Get report for all CMT employees
+    const employeeReports = [];
+
+    for (const employee of cmtEmployees) {
+      try {
+        // Get talktime for this employee
+        const userAlias = employee.aliasName || employee.employeeName;
+        const callData = await getUserTalkTime(userAlias, date);
+        const talkTimeHours = callData.totalTalkTime / 60; // Convert minutes to hours
+
+        // Get trucker count for this employee
+        const truckerCount = await ShipperDriver.countDocuments({
+          'addedBy.empId': employee.empId,
+          userType: 'trucker',
+          createdAt: { $gte: targetDate, $lt: nextDay }
+        });
+
+        employeeReports.push({
+          empId: employee.empId,
+          employeeName: employee.employeeName,
+          aliasName: employee.aliasName,
+          department: employee.department,
+          designation: employee.designation,
+          talkTime: {
+            hours: talkTimeHours,
+            minutes: callData.totalTalkTime,
+            formatted: `${Math.floor(talkTimeHours)}h ${Math.round((talkTimeHours % 1) * 60)}m`
+          },
+          truckerCount: truckerCount
+        });
+      } catch (error) {
+        console.error(`❌ Error getting data for ${employee.employeeName}:`, error.message);
+        // Add employee with error data
+        employeeReports.push({
+          empId: employee.empId,
+          employeeName: employee.employeeName,
+          aliasName: employee.aliasName,
+          department: employee.department,
+          designation: employee.designation,
+          talkTime: {
+            hours: 0,
+            minutes: 0,
+            formatted: '0h 0m',
+            error: 'Failed to fetch talktime data'
+          },
+          truckerCount: 0,
+          error: 'Failed to fetch data'
+        });
+      }
+    }
+
+    // Calculate summary statistics
+    const totalTalkTime = employeeReports.reduce((sum, emp) => sum + emp.talkTime.minutes, 0);
+    const totalTruckerCount = employeeReports.reduce((sum, emp) => sum + emp.truckerCount, 0);
+    const avgTalkTime = employeeReports.length > 0 ? totalTalkTime / employeeReports.length : 0;
+
+    // Calculate status for each employee
+    const minTalkTimeHours = 1.5; // 1.5 hours required
+    const minTruckerCount = 4; // 4 truckers required
+
+    for (const emp of employeeReports) {
+      const talkTimeHours = emp.talkTime.hours;
+      const truckerCount = emp.truckerCount;
+      
+      const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+      const truckerCompleted = truckerCount >= minTruckerCount;
+      
+      emp.status = (talkTimeCompleted && truckerCompleted) ? 'completed' : 'incomplete';
+      
+      if (talkTimeCompleted && truckerCompleted) {
+        emp.statusMessage = 'All daily targets completed';
+      } else if (talkTimeCompleted && !truckerCompleted) {
+        emp.statusMessage = `Talktime completed (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h), but truckers incomplete (${truckerCount}/${minTruckerCount})`;
+      } else if (!talkTimeCompleted && truckerCompleted) {
+        emp.statusMessage = `Truckers completed (${truckerCount}/${minTruckerCount}), but talktime incomplete (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h)`;
+      } else {
+        emp.statusMessage = `Both talktime (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h) and truckers (${truckerCount}/${minTruckerCount}) incomplete`;
+      }
+      
+      // Add reason field for incomplete status
+      if (emp.status === 'incomplete') {
+        const { TargetReason } = await import('../models/targetReasonModel.js');
+        const reasonDoc = await TargetReason.findOne({ 
+          empId: emp.empId, 
+          date: targetDate 
+        });
+        emp.reason = reasonDoc ? reasonDoc.reason : 'Reason not provided yet';
+      } else {
+        emp.reason = null;
+      }
+      
+      // Add target information
+      emp.targets = {
+        talkTime: {
+          required: minTalkTimeHours,
+          current: talkTimeHours,
+          completed: talkTimeCompleted,
+          remaining: Math.max(0, minTalkTimeHours - talkTimeHours)
+        },
+        truckers: {
+          required: minTruckerCount,
+          current: truckerCount,
+          completed: truckerCompleted,
+          remaining: Math.max(0, minTruckerCount - truckerCount)
+        }
+      };
+    }
+
+    // Calculate overall department status
+    const completedEmployees = employeeReports.filter(emp => emp.status === 'completed').length;
+    const totalEmployees = employeeReports.length;
+    const departmentStatus = totalEmployees > 0 ? (completedEmployees === totalEmployees ? 'completed' : 'incomplete') : 'no_employees';
+
+    const summary = {
+      totalEmployees: employeeReports.length,
+      completedEmployees: completedEmployees,
+      incompleteEmployees: totalEmployees - completedEmployees,
+      departmentStatus: departmentStatus,
+      totalTalkTime: {
+        hours: totalTalkTime / 60,
+        minutes: totalTalkTime,
+        formatted: `${Math.floor(totalTalkTime / 60)}h ${Math.round((totalTalkTime % 60))}m`
+      },
+      avgTalkTime: {
+        hours: avgTalkTime / 60,
+        minutes: avgTalkTime,
+        formatted: `${Math.floor(avgTalkTime / 60)}h ${Math.round((avgTalkTime % 60))}m`
+      },
+      totalTruckerCount: totalTruckerCount,
+      targets: {
+        talkTime: {
+          required: minTalkTimeHours,
+          total: employeeReports.reduce((sum, emp) => sum + emp.talkTime.hours, 0),
+          avg: employeeReports.length > 0 ? employeeReports.reduce((sum, emp) => sum + emp.talkTime.hours, 0) / employeeReports.length : 0
+        },
+        truckers: {
+          required: minTruckerCount,
+          total: totalTruckerCount,
+          avg: employeeReports.length > 0 ? totalTruckerCount / employeeReports.length : 0
+        }
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: `CMT Department Report for ${date}`,
+      data: {
+        date: date,
+        summary: summary,
+        employees: employeeReports
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getCMTDepartmentReport:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating CMT department report',
+      error: error.message
+    });
+  }
+};
+
+// 📊 Sales Department Report - Date-wise talktime and delivery orders count
+export const getSalesDepartmentReport = async (req, res) => {
+  try {
+    const { date, empId } = req.query;
+    
+    // Validate date parameter
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date parameter is required (format: YYYY-MM-DD)'
+      });
+    }
+
+    // Parse target date
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
+
+    // Set date range for the target date
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Get Sales department employees
+    const salesEmployees = await Employee.find({
+      department: 'Sales',
+      status: 'active'
+    }).select('empId employeeName aliasName department designation email mobileNo');
+
+    if (salesEmployees.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No Sales department employees found',
+        data: {
+          date: date,
+          totalEmployees: 0,
+          employees: []
+        }
+      });
+    }
+
+    // Get report for specific employee if empId provided
+    if (empId) {
+      const employee = salesEmployees.find(emp => emp.empId === empId);
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: 'Sales employee not found with provided empId'
+        });
+      }
+
+      // Get talktime for this employee
+      const userAlias = employee.aliasName || employee.employeeName;
+      const callData = await getUserTalkTime(userAlias, date);
+      const talkTimeHours = callData.totalTalkTime / 60; // Convert minutes to hours
+
+      // Get delivery orders count for this employee
+      const DO = await import('../models/doModel.js');
+      const deliveryOrdersCount = await DO.default.countDocuments({
+        'createdBySalesUser.empId': employee.empId,
+        createdAt: { $gte: targetDate, $lt: nextDay }
+      });
+
+      // Calculate status for individual employee
+      const minTalkTimeHours = 3; // 3 hours required
+      const minDeliveryOrders = 1; // 1 DO required
+      
+      const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+      const deliveryOrdersCompleted = deliveryOrdersCount >= minDeliveryOrders;
+      
+      let status = 'incomplete';
+      let statusMessage = '';
+      
+      if (talkTimeCompleted && deliveryOrdersCompleted) {
+        status = 'completed';
+        statusMessage = 'All daily targets completed';
+      } else if (talkTimeCompleted && !deliveryOrdersCompleted) {
+        status = 'incomplete';
+        statusMessage = `Talktime completed (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h), but delivery orders incomplete (${deliveryOrdersCount}/${minDeliveryOrders})`;
+      } else if (!talkTimeCompleted && deliveryOrdersCompleted) {
+        status = 'incomplete';
+        statusMessage = `Delivery orders completed (${deliveryOrdersCount}/${minDeliveryOrders}), but talktime incomplete (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h)`;
+      } else {
+        status = 'incomplete';
+        statusMessage = `Both talktime (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h) and delivery orders (${deliveryOrdersCount}/${minDeliveryOrders}) incomplete`;
+      }
+
+      // Add reason field for incomplete status
+      let reason = null;
+      if (status === 'incomplete') {
+        const { TargetReason } = await import('../models/targetReasonModel.js');
+        const reasonDoc = await TargetReason.findOne({ 
+          empId: employee.empId, 
+          date: targetDate 
+        });
+        reason = reasonDoc ? reasonDoc.reason : 'Reason not provided yet';
+      }
+
+      const employeeReport = {
+        empId: employee.empId,
+        employeeName: employee.employeeName,
+        aliasName: employee.aliasName,
+        department: employee.department,
+        designation: employee.designation,
+        date: date,
+        status: status,
+        statusMessage: statusMessage,
+        reason: reason,
+        talkTime: {
+          hours: talkTimeHours,
+          minutes: callData.totalTalkTime,
+          formatted: `${Math.floor(talkTimeHours)}h ${Math.round((talkTimeHours % 1) * 60)}m`
+        },
+        deliveryOrdersCount: deliveryOrdersCount,
+        targets: {
+          talkTime: {
+            required: minTalkTimeHours,
+            current: talkTimeHours,
+            completed: talkTimeCompleted,
+            remaining: Math.max(0, minTalkTimeHours - talkTimeHours)
+          },
+          deliveryOrders: {
+            required: minDeliveryOrders,
+            current: deliveryOrdersCount,
+            completed: deliveryOrdersCompleted,
+            remaining: Math.max(0, minDeliveryOrders - deliveryOrdersCount)
+          }
+        },
+        createdAt: new Date()
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: `Sales Department Report for ${employee.employeeName} on ${date}`,
+        data: employeeReport
+      });
+    }
+
+    // Get report for all Sales employees
+    const employeeReports = [];
+
+    for (const employee of salesEmployees) {
+      try {
+        // Get talktime for this employee
+        const userAlias = employee.aliasName || employee.employeeName;
+        const callData = await getUserTalkTime(userAlias, date);
+        const talkTimeHours = callData.totalTalkTime / 60; // Convert minutes to hours
+
+        // Get delivery orders count for this employee
+        const DO = await import('../models/doModel.js');
+        const deliveryOrdersCount = await DO.default.countDocuments({
+          'createdBySalesUser.empId': employee.empId,
+          createdAt: { $gte: targetDate, $lt: nextDay }
+        });
+
+        employeeReports.push({
+          empId: employee.empId,
+          employeeName: employee.employeeName,
+          aliasName: employee.aliasName,
+          department: employee.department,
+          designation: employee.designation,
+          talkTime: {
+            hours: talkTimeHours,
+            minutes: callData.totalTalkTime,
+            formatted: `${Math.floor(talkTimeHours)}h ${Math.round((talkTimeHours % 1) * 60)}m`
+          },
+          deliveryOrdersCount: deliveryOrdersCount
+        });
+      } catch (error) {
+        console.error(`❌ Error getting data for ${employee.employeeName}:`, error.message);
+        // Add employee with error data
+        employeeReports.push({
+          empId: employee.empId,
+          employeeName: employee.employeeName,
+          aliasName: employee.aliasName,
+          department: employee.department,
+          designation: employee.designation,
+          talkTime: {
+            hours: 0,
+            minutes: 0,
+            formatted: '0h 0m',
+            error: 'Failed to fetch talktime data'
+          },
+          deliveryOrdersCount: 0,
+          error: 'Failed to fetch data'
+        });
+      }
+    }
+
+    // Calculate summary statistics
+    const totalTalkTime = employeeReports.reduce((sum, emp) => sum + emp.talkTime.minutes, 0);
+    const totalDeliveryOrders = employeeReports.reduce((sum, emp) => sum + emp.deliveryOrdersCount, 0);
+    const avgTalkTime = employeeReports.length > 0 ? totalTalkTime / employeeReports.length : 0;
+
+    // Calculate status for each employee
+    const minTalkTimeHours = 3; // 3 hours required
+    const minDeliveryOrders = 1; // 1 DO required
+
+    for (const emp of employeeReports) {
+      const talkTimeHours = emp.talkTime.hours;
+      const deliveryOrdersCount = emp.deliveryOrdersCount;
+      
+      const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+      const deliveryOrdersCompleted = deliveryOrdersCount >= minDeliveryOrders;
+      
+      emp.status = (talkTimeCompleted && deliveryOrdersCompleted) ? 'completed' : 'incomplete';
+      
+      if (talkTimeCompleted && deliveryOrdersCompleted) {
+        emp.statusMessage = 'All daily targets completed';
+      } else if (talkTimeCompleted && !deliveryOrdersCompleted) {
+        emp.statusMessage = `Talktime completed (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h), but delivery orders incomplete (${deliveryOrdersCount}/${minDeliveryOrders})`;
+      } else if (!talkTimeCompleted && deliveryOrdersCompleted) {
+        emp.statusMessage = `Delivery orders completed (${deliveryOrdersCount}/${minDeliveryOrders}), but talktime incomplete (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h)`;
+      } else {
+        emp.statusMessage = `Both talktime (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h) and delivery orders (${deliveryOrdersCount}/${minDeliveryOrders}) incomplete`;
+      }
+      
+      // Add reason field for incomplete status
+      if (emp.status === 'incomplete') {
+        const { TargetReason } = await import('../models/targetReasonModel.js');
+        const reasonDoc = await TargetReason.findOne({ 
+          empId: emp.empId, 
+          date: targetDate 
+        });
+        emp.reason = reasonDoc ? reasonDoc.reason : 'Reason not provided yet';
+      } else {
+        emp.reason = null;
+      }
+      
+      // Add target information
+      emp.targets = {
+        talkTime: {
+          required: minTalkTimeHours,
+          current: talkTimeHours,
+          completed: talkTimeCompleted,
+          remaining: Math.max(0, minTalkTimeHours - talkTimeHours)
+        },
+        deliveryOrders: {
+          required: minDeliveryOrders,
+          current: deliveryOrdersCount,
+          completed: deliveryOrdersCompleted,
+          remaining: Math.max(0, minDeliveryOrders - deliveryOrdersCount)
+        }
+      };
+    }
+
+    // Calculate overall department status
+    const completedEmployees = employeeReports.filter(emp => emp.status === 'completed').length;
+    const totalEmployees = employeeReports.length;
+    const departmentStatus = totalEmployees > 0 ? (completedEmployees === totalEmployees ? 'completed' : 'incomplete') : 'no_employees';
+
+    const summary = {
+      totalEmployees: employeeReports.length,
+      completedEmployees: completedEmployees,
+      incompleteEmployees: totalEmployees - completedEmployees,
+      departmentStatus: departmentStatus,
+      totalTalkTime: {
+        hours: totalTalkTime / 60,
+        minutes: totalTalkTime,
+        formatted: `${Math.floor(totalTalkTime / 60)}h ${Math.round((totalTalkTime % 60))}m`
+      },
+      avgTalkTime: {
+        hours: avgTalkTime / 60,
+        minutes: avgTalkTime,
+        formatted: `${Math.floor(avgTalkTime / 60)}h ${Math.round((avgTalkTime % 60))}m`
+      },
+      totalDeliveryOrders: totalDeliveryOrders,
+      targets: {
+        talkTime: {
+          required: minTalkTimeHours,
+          total: employeeReports.reduce((sum, emp) => sum + emp.talkTime.hours, 0),
+          avg: employeeReports.length > 0 ? employeeReports.reduce((sum, emp) => sum + emp.talkTime.hours, 0) / employeeReports.length : 0
+        },
+        deliveryOrders: {
+          required: minDeliveryOrders,
+          total: totalDeliveryOrders,
+          avg: employeeReports.length > 0 ? totalDeliveryOrders / employeeReports.length : 0
+        }
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: `Sales Department Report for ${date}`,
+      data: {
+        date: date,
+        summary: summary,
+        employees: employeeReports
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getSalesDepartmentReport:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating Sales department report',
+      error: error.message
+    });
+  }
+};
+
+// 📝 Update reason for incomplete target
+export const updateTargetReason = async (req, res) => {
+  try {
+    const { empId, date, reason } = req.body;
+    
+    // Validate required fields
+    if (!empId || !date || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'empId, date, and reason are required'
+      });
+    }
+
+    // Validate reason length
+    if (reason.length < 10 || reason.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reason must be between 10 and 500 characters'
+      });
+    }
+
+    // Find employee
+    const employee = await Employee.findOne({ empId });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // Check if employee is from CMT or Sales department
+    if (!['CMT', 'Sales'].includes(employee.department)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This functionality is only for CMT and Sales employees'
+      });
+    }
+
+    // Parse target date
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
+
+    // Set date range for the target date
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Get employee's performance for that date
+    const userAlias = employee.aliasName || employee.employeeName;
+    const callData = await getUserTalkTime(userAlias, date);
+    const talkTimeHours = callData.totalTalkTime / 60;
+
+    let targetStatus = 'completed';
+    let targetMessage = '';
+
+    if (employee.department === 'CMT') {
+      // CMT targets: 1.5 hours talktime + 4 truckers
+      const truckerCount = await ShipperDriver.countDocuments({
+        'addedBy.empId': employee.empId,
+        userType: 'trucker',
+        createdAt: { $gte: targetDate, $lt: nextDay }
+      });
+
+      const talkTimeCompleted = talkTimeHours >= 1.5;
+      const truckerCompleted = truckerCount >= 4;
+
+      if (talkTimeCompleted && truckerCompleted) {
+        targetStatus = 'completed';
+        targetMessage = 'All daily targets completed';
+      } else {
+        targetStatus = 'incomplete';
+        if (talkTimeCompleted && !truckerCompleted) {
+          targetMessage = `Talktime completed (${talkTimeHours.toFixed(1)}/1.5h), but truckers incomplete (${truckerCount}/4)`;
+        } else if (!talkTimeCompleted && truckerCompleted) {
+          targetMessage = `Truckers completed (${truckerCount}/4), but talktime incomplete (${talkTimeHours.toFixed(1)}/1.5h)`;
+        } else {
+          targetMessage = `Both talktime (${talkTimeHours.toFixed(1)}/1.5h) and truckers (${truckerCount}/4) incomplete`;
+        }
+      }
+    } else if (employee.department === 'Sales') {
+      // Sales targets: 3 hours talktime + 1 delivery order
+      const DO = await import('../models/doModel.js');
+      const deliveryOrdersCount = await DO.default.countDocuments({
+        'createdBySalesUser.empId': employee.empId,
+        createdAt: { $gte: targetDate, $lt: nextDay }
+      });
+
+      const talkTimeCompleted = talkTimeHours >= 3;
+      const deliveryOrdersCompleted = deliveryOrdersCount >= 1;
+
+      if (talkTimeCompleted && deliveryOrdersCompleted) {
+        targetStatus = 'completed';
+        targetMessage = 'All daily targets completed';
+      } else {
+        targetStatus = 'incomplete';
+        if (talkTimeCompleted && !deliveryOrdersCompleted) {
+          targetMessage = `Talktime completed (${talkTimeHours.toFixed(1)}/3h), but delivery orders incomplete (${deliveryOrdersCount}/1)`;
+        } else if (!talkTimeCompleted && deliveryOrdersCompleted) {
+          targetMessage = `Delivery orders completed (${deliveryOrdersCount}/1), but talktime incomplete (${talkTimeHours.toFixed(1)}/3h)`;
+        } else {
+          targetMessage = `Both talktime (${talkTimeHours.toFixed(1)}/3h) and delivery orders (${deliveryOrdersCount}/1) incomplete`;
+        }
+      }
+    }
+
+    // Only allow reason update if status is incomplete
+    if (targetStatus === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot add reason for completed targets'
+      });
+    }
+
+    // Store the reason to database
+    const { TargetReason } = await import('../models/targetReasonModel.js');
+    
+    // Check if reason already exists for this empId and date
+    const existingReason = await TargetReason.findOne({ empId, date: targetDate });
+    
+    if (existingReason) {
+      // Update existing reason
+      existingReason.reason = reason;
+      existingReason.submittedBy = req.user.empId;
+      existingReason.submittedAt = new Date();
+      await existingReason.save();
+    } else {
+      // Create new reason
+      await TargetReason.create({
+        empId,
+        date: targetDate,
+        reason,
+        submittedBy: req.user.empId
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Reason updated successfully',
+      data: {
+        empId: employee.empId,
+        employeeName: employee.employeeName,
+        department: employee.department,
+        date: date,
+        status: targetStatus,
+        statusMessage: targetMessage,
+        reason: reason,
+        submittedBy: req.user.empId,
+        submittedAt: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in updateTargetReason:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating target reason',
+      error: error.message
+    });
+  }
+};

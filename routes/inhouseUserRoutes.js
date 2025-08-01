@@ -23,7 +23,10 @@ import {
   unassignModulesFromMaster,
   getNewJoiners,
   getThisMonthBirthdays,
-  updateEmployeeBasicSalary
+  updateEmployeeBasicSalary,
+  getCMTDepartmentReport,
+  getSalesDepartmentReport,
+  updateTargetReason
 } from '../controllers/inhouseUserController.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
 
@@ -86,5 +89,14 @@ router.get('/meetings/employee/:empId', isAuthenticatedEmployee, getMeetingsByEm
 
 // 💰 Update employee basic salary (HR function)
 router.patch('/:empId/basic-salary', isAuthenticatedEmployee, isHRDepartment, updateEmployeeBasicSalary);
+
+// 📊 CMT Department Report - Date-wise talktime and trucker count
+router.get('/cmt/report', isAuthenticatedEmployee, getCMTDepartmentReport);
+
+// 📊 Sales Department Report - Date-wise talktime and delivery orders count
+router.get('/sales/report', isAuthenticatedEmployee, getSalesDepartmentReport);
+
+// 📝 Update reason for incomplete target
+router.post('/target/reason', isAuthenticatedEmployee, updateTargetReason);
 
 export default router;
