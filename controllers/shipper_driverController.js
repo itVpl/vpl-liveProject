@@ -930,28 +930,30 @@ const addTruckerByCMTEmployee = async (req, res) => {
 
         await newTrucker.save();
 
-        // ✅ 10. Send registration confirmation email (pending status)
-        try {
-            const emailSubject = `📋 Account Created - ${compName}`;
-            const emailMessage = generateStatusUpdateEmail(
-                compName, 
-                'trucker', 
-                'pending', 
-                email, 
-                'Account created by CMT department - ' + inhouseUser.employeeName + ' (Pending for approval)'
-            );
+        // ✅ 10. Send registration confirmation email (pending status) - TEMPORARILY DISABLED
+        // try {
+        //     const emailSubject = `📋 Account Created - ${compName}`;
+        //     const emailMessage = generateStatusUpdateEmail(
+        //         compName, 
+        //         'trucker', 
+        //         'pending', 
+        //         email, 
+        //         'Account created by CMT department - ' + inhouseUser.employeeName + ' (Pending for approval)'
+        //     );
 
-            await sendEmail({
-                to: email,
-                subject: emailSubject,
-                html: emailMessage,
-            });
+        //     await sendEmail({
+        //         to: email,
+        //         subject: emailSubject,
+        //         html: emailMessage,
+        //     });
 
-            console.log('📧 Registration confirmation email sent to:', email);
-        } catch (emailError) {
-            console.error('❌ Email sending failed:', emailError);
-            // Don't fail the operation if email fails
-        }
+        //     console.log('📧 Registration confirmation email sent to:', email);
+        // } catch (emailError) {
+        //     console.error('❌ Email sending failed:', emailError);
+        //     // Don't fail the operation if email fails
+        // }
+
+        console.log('📧 Email notification temporarily disabled for CMT trucker creation');
 
         // ✅ 11. Success response
         res.status(201).json({
