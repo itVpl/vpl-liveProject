@@ -9,8 +9,12 @@ import {
   deleteDO,
   getDOById
 } from '../controllers/doController.js';
+import { isAuthenticatedUser } from '../middlewares/auth.js';
 
 const router = express.Router();
+
+// Apply authentication middleware to all DO routes
+router.use(isAuthenticatedUser);
 
 // Create DO
 router.post('/do', createDO);

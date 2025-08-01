@@ -1,117 +1,122 @@
-// import { catchAsyncError } from "./catchAsynError.js";
-// import ErrorHandler from "./error.js";
-// import jwt from "jsonwebtoken";
-// import { User } from "../models/userModel.js";
-// import { Employee } from "../models/inhouseUserModel.js";
-// import ShipperDriver from "../models/shipper_driverModel.js";
-// import Driver from "../models/driverModel.js";
+import { catchAsyncError } from "./catchAsynError.js";
+import ErrorHandler from "./error.js";
+import jwt from "jsonwebtoken";
+import { User } from "../models/userModel.js";
+import { Employee } from "../models/inhouseUserModel.js";
+import ShipperDriver from "../models/shipper_driverModel.js";
+import Driver from "../models/driverModel.js";
 
-// export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
-//     let token = req.cookies.token;
-//     if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-//         token = req.headers.authorization.split(' ')[1];
-//     }
-//     if (!token) {
-//         return next(new ErrorHandler("Please login to access this resource", 400));
-//     }
+export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
+    if (!token) {
+        return next(new ErrorHandler("Please login to access this resource", 400));
+    }
 
-//     const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+    const decodedData = jwt.verify(token, process.env.JWT_SECRET);
 
-//     // Try to find user in User model first
-//     let user = await User.findById(decodedData.id);
+    // Try to find user in User model first
+    let user = await User.findById(decodedData.id);
 
-//     // If not found in User model, try ShipperDriver model
-//     if (!user) {
-//         user = await ShipperDriver.findById(decodedData.id);
-//         if (user && user.status !== 'approved') {
-//             return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
-//         }
-//     }
+    // If not found in User model, try Employee model
+    if (!user) {
+        user = await Employee.findById(decodedData.id);
+    }
 
-//     // If not found in ShipperDriver, try Driver model
-//     if (!user) {
-//         user = await Driver.findById(decodedData.id);
-//         if (user) {
-//         }
-//     }
+    // If not found in Employee model, try ShipperDriver model
+    if (!user) {
+        user = await ShipperDriver.findById(decodedData.id);
+        if (user && user.status !== 'approved') {
+            return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
+        }
+    }
 
-//     if (!user) {
-//         return next(new ErrorHandler("User not found", 404));
-//     }
+    // If not found in ShipperDriver, try Driver model
+    if (!user) {
+        user = await Driver.findById(decodedData.id);
+        if (user) {
+        }
+    }
 
-//     req.user = user;
-//     next();
-// });
+    if (!user) {
+        return next(new ErrorHandler("User not found", 404));
+    }
 
-// // 🔥 New: Middleware to ensure only shippers can post loads
-// export const isShipper = catchAsyncError(async (req, res, next) => {
-//     let token = req.cookies.token;
-//     if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-//         token = req.headers.authorization.split(' ')[1];
-//     }
+    req.user = user;
+    next();
+});
 
-//     if (!token) {
-//         return next(new ErrorHandler("Please login to access this resource", 400));
-//     }
+// 🔥 New: Middleware to ensure only shippers can post loads
+export const isShipper = catchAsyncError(async (req, res, next) => {
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
 
-//     try {
-//         const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+    if (!token) {
+        return next(new ErrorHandler("Please login to access this resource", 400));
+    }
 
-//         // Check if user is ShipperDriver with userType 'shipper'
-//         const user = await ShipperDriver.findById(decodedData.id);
+    try {
+        const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Check if user is ShipperDriver with userType 'shipper'
+        const user = await ShipperDriver.findById(decodedData.id);
 
 
-//         if (!user) {
-//             return next(new ErrorHandler("User not found", 404));
-//         }
+        if (!user) {
+            return next(new ErrorHandler("User not found", 404));
+        }
 
-//         if (user.status !== 'approved') {
-//             return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
-//         }
+        if (user.status !== 'approved') {
+            return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
+        }
 
-//         if (user.userType !== 'shipper') {
-//             return next(new ErrorHandler("Only shippers can perform this action", 403));
-//         }
+        if (user.userType !== 'shipper') {
+            return next(new ErrorHandler("Only shippers can perform this action", 403));
+        }
 
-//         req.user = user;
-//         console.log('🔍 Debug - User set in req.user:', req.user._id);
-//         next();
-//     } catch (error) {
-//         console.error('🔍 Debug - JWT verification error:', error);
-//         return next(new ErrorHandler("Invalid token", 401));
-//     }
-// });
+        req.user = user;
+        console.log('🔍 Debug - User set in req.user:', req.user._id);
+        next();
+    } catch (error) {
+        console.error('🔍 Debug - JWT verification error:', error);
+        return next(new ErrorHandler("Invalid token", 401));
+    }
+});
 
-// // 🔥 New: Middleware to ensure only truckers can place bids
-// export const isTrucker = catchAsyncError(async (req, res, next) => {
-//     let token = req.cookies.token;
-//     if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-//         token = req.headers.authorization.split(' ')[1];
-//     }
-//     if (!token) {
-//         return next(new ErrorHandler("Please login to access this resource", 400));
-//     }
+// 🔥 New: Middleware to ensure only truckers can place bids
+export const isTrucker = catchAsyncError(async (req, res, next) => {
+    let token = req.cookies.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
+    if (!token) {
+        return next(new ErrorHandler("Please login to access this resource", 400));
+    }
 
-//     const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+    const decodedData = jwt.verify(token, process.env.JWT_SECRET);
 
-//     // Check if user is ShipperDriver with userType 'trucker'
-//     const user = await ShipperDriver.findById(decodedData.id);
+    // Check if user is ShipperDriver with userType 'trucker'
+    const user = await ShipperDriver.findById(decodedData.id);
 
-//     if (!user) {
-//         return next(new ErrorHandler("User not found", 404));
-//     }
+    if (!user) {
+        return next(new ErrorHandler("User not found", 404));
+    }
 
-//     if (user.status !== 'approved') {
-//         return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
-//     }
+    if (user.status !== 'approved') {
+        return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
+    }
 
-//     if (user.userType !== 'trucker') {
-//         return next(new ErrorHandler("Only truckers can perform this action", 403));
-//     }
+    if (user.userType !== 'trucker') {
+        return next(new ErrorHandler("Only truckers can perform this action", 403));
+    }
 
-//     req.user = user;
-//     next();
-// });
+    req.user = user;
+    next();
+});
 
 // // export const isAuthenticatedEmployee = catchAsyncError(async (req, res, next) => {
 // //     const token = req.cookies.token;
@@ -151,120 +156,112 @@
 
 
 
-import { catchAsyncError } from "./catchAsynError.js";
-import ErrorHandler from "./error.js";
-import jwt from "jsonwebtoken";
-import { User } from "../models/userModel.js";
-import { Employee } from "../models/inhouseUserModel.js";
-import ShipperDriver from "../models/shipper_driverModel.js";
-import Driver from "../models/driverModel.js";
-
 // ✅ Generic Auth Middleware (Admin, ShipperDriver, Driver)
-export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
-  let token = req.cookies.token;
+// export const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
+//   let token = req.cookies.token;
 
-  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
-  }
+//   if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+//     token = req.headers.authorization.split(" ")[1];
+//   }
 
-  if (!token) {
-    return next(new ErrorHandler("Please login to access this resource", 400));
-  }
+//   if (!token) {
+//     return next(new ErrorHandler("Please login to access this resource", 400));
+//   }
 
-  const decodedData = jwt.verify(token, process.env.JWT_SECRET);
-  const userId = decodedData.id;
+//   const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+//   const userId = decodedData.id;
 
-  // Try admin/user
-  let user = await User.findById(userId);
-  if (user) {
-    req.user = user;
-    return next();
-  }
+//   // Try admin/user
+//   let user = await User.findById(userId);
+//   if (user) {
+//     req.user = user;
+//     return next();
+//   }
 
-  // Try trucker/shipper
-  user = await ShipperDriver.findById(userId);
-  if (user) {
-    if (user.status !== "approved") {
-      return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
-    }
-    req.user = user;
-    return next();
-  }
+//   // Try trucker/shipper
+//   user = await ShipperDriver.findById(userId);
+//   if (user) {
+//     if (user.status !== "approved") {
+//       return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
+//     }
+//     req.user = user;
+//     return next();
+//   }
 
-  // Try driver
-  user = await Driver.findById(userId);
-  if (user) {
-    req.user = user;
-    return next();
-  }
+//   // Try driver
+//   user = await Driver.findById(userId);
+//   if (user) {
+//     req.user = user;
+//     return next();
+//   }
 
-  console.log("❌ No user found for ID:", userId);
-  return next(new ErrorHandler("User not found", 404));
-});
+//   console.log("❌ No user found for ID:", userId);
+//   return next(new ErrorHandler("User not found", 404));
+// });
 
-// ✅ Only Shippers
-export const isShipper = catchAsyncError(async (req, res, next) => {
-  let token = req.cookies.token;
+// // ✅ Only Shippers
+// export const isShipper = catchAsyncError(async (req, res, next) => {
+//   let token = req.cookies.token;
 
-  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
-  }
+//   if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+//     token = req.headers.authorization.split(" ")[1];
+//   }
 
-  if (!token) {
-    return next(new ErrorHandler("Please login to access this resource", 400));
-  }
+//   if (!token) {
+//     return next(new ErrorHandler("Please login to access this resource", 400));
+//   }
 
-  const decodedData = jwt.verify(token, process.env.JWT_SECRET);
-  const user = await ShipperDriver.findById(decodedData.id);
+//   const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+//   const user = await ShipperDriver.findById(decodedData.id);
 
-  if (!user) {
-    return next(new ErrorHandler("User not found", 404));
-  }
+//   if (!user) {
+//     return next(new ErrorHandler("User not found", 404));
+//   }
 
-  if (user.status !== "approved") {
-    return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
-  }
+//   if (user.status !== "approved") {
+//     return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
+//   }
 
-  if (user.userType !== "shipper") {
-    return next(new ErrorHandler("Only shippers can perform this action", 403));
-  }
+//   if (user.userType !== "shipper") {
+//     return next(new ErrorHandler("Only shippers can perform this action", 403));
+//   }
 
-  req.user = user;
-  next();
-});
+//   req.user = user;
+//   next();
+// });
 
-// ✅ Only Truckers
-export const isTrucker = catchAsyncError(async (req, res, next) => {
-  let token = req.cookies.token;
+// // ✅ Only Truckers
+// export const isTrucker = catchAsyncError(async (req, res, next) => {
+//   let token = req.cookies.token;
 
-  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
-  }
+//   if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+//     token = req.headers.authorization.split(" ")[1];
+//   }
 
-  if (!token) {
-    return next(new ErrorHandler("Please login to access this resource", 400));
-  }
+//   if (!token) {
+//     return next(new ErrorHandler("Please login to access this resource", 400));
+//   }
 
-  const decodedData = jwt.verify(token, process.env.JWT_SECRET);
-  const user = await ShipperDriver.findById(decodedData.id);
+//   const decodedData = jwt.verify(token, process.env.JWT_SECRET);
+//   const user = await ShipperDriver.findById(decodedData.id);
 
-  if (!user) {
-    return next(new ErrorHandler("User not found", 404));
-  }
+//   if (!user) {
+//     return next(new ErrorHandler("User not found", 404));
+//   }
 
-  if (user.status !== "approved") {
-    return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
-  }
+//   if (user.status !== "approved") {
+//     return next(new ErrorHandler(`Your account is ${user.status}. Please wait for approval.`, 403));
+//   }
 
-  if (user.userType !== "trucker") {
-    return next(new ErrorHandler("Only truckers can perform this action", 403));
-  }
+//   if (user.userType !== "trucker") {
+//     return next(new ErrorHandler("Only truckers can perform this action", 403));
+//   }
 
-  req.user = user;
-  next();
-});
+//   req.user = user;
+//   next();
+// });
 
-// ✅ Only Inhouse Employees
+// // ✅ Only Inhouse Employees
 export const isAuthenticatedEmployee = catchAsyncError(async (req, res, next) => {
   let token = req.cookies.token;
 

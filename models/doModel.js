@@ -115,6 +115,20 @@ const doSchema = new mongoose.Schema({
   customers: [customerSchema],
   carrier: carrierSchema,
   shipper: shipperSchema,
+  createdBySalesUser: {
+    empId: {
+      type: String,
+      required: true
+    },
+    employeeName: {
+      type: String,
+      required: true
+    },
+    department: {
+      type: String,
+      default: 'Sales'
+    }
+  },
   remarks: {
     type: String
   },

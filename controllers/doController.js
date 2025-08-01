@@ -25,6 +25,13 @@ export const createDO = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Shipper information is required' });
     }
     
+    // Add createdBySalesUser information
+    doData.createdBySalesUser = {
+      empId: doData.empId,
+      employeeName: req.user ? req.user.employeeName : 'Unknown',
+      department: 'Sales'
+    };
+    
     // Validate customer data
     for (let i = 0; i < doData.customers.length; i++) {
       const customer = doData.customers[i];
