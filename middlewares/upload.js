@@ -299,12 +299,50 @@ const doFileUpload = multer({
 // 🔥 NEW: Simple single file upload for DO creation
 const doCreateUpload = multer({
   storage: isS3Configured ? getS3Storage(req => {
-    // Extract LOAD NO from request body
-    const loadNo = req.body.loadNo || 'unknown';
+    // Extract LOAD NO from request body - handle both JSON and form data
+    let loadNo = 'unknown';
+    
+    // Try to get loadNo from form data first
+    if (req.body.customers) {
+      try {
+        const customers = JSON.parse(req.body.customers);
+        if (customers && customers.length > 0 && customers[0].loadNo) {
+          loadNo = customers[0].loadNo;
+        }
+      } catch (e) {
+        console.log('Could not parse customers JSON');
+      }
+    }
+    
+    // Fallback to direct loadNo field
+    if (loadNo === 'unknown' && req.body.loadNo) {
+      loadNo = req.body.loadNo;
+    }
+    
+    console.log('Using loadNo for folder:', loadNo);
     return `doFiles/${loadNo}`;
   }) : multer.diskStorage({
     destination: (req, file, cb) => {
-      const loadNo = req.body.loadNo || 'unknown';
+      let loadNo = 'unknown';
+      
+      // Try to get loadNo from form data first
+      if (req.body.customers) {
+        try {
+          const customers = JSON.parse(req.body.customers);
+          if (customers && customers.length > 0 && customers[0].loadNo) {
+            loadNo = customers[0].loadNo;
+          }
+        } catch (e) {
+          console.log('Could not parse customers JSON');
+        }
+      }
+      
+      // Fallback to direct loadNo field
+      if (loadNo === 'unknown' && req.body.loadNo) {
+        loadNo = req.body.loadNo;
+      }
+      
+      console.log('Using loadNo for folder:', loadNo);
       const uploadPath = path.join(__dirname, '../uploads/doFiles', loadNo);
       if (!fs.existsSync(uploadPath)) {
         fs.mkdirSync(uploadPath, { recursive: true });
