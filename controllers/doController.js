@@ -48,6 +48,37 @@ export const createDO = async (req, res) => {
     console.log('Received DO data:', JSON.stringify(doData, null, 2));
     console.log('Uploaded file:', uploadedFile);
     
+    // Parse JSON strings from form-data
+    if (typeof doData.customers === 'string') {
+      try {
+        doData.customers = JSON.parse(doData.customers);
+        console.log('Parsed customers:', doData.customers);
+      } catch (error) {
+        console.error('Error parsing customers JSON:', error);
+        return res.status(400).json({ success: false, message: 'Invalid customers JSON format' });
+      }
+    }
+    
+    if (typeof doData.carrier === 'string') {
+      try {
+        doData.carrier = JSON.parse(doData.carrier);
+        console.log('Parsed carrier:', doData.carrier);
+      } catch (error) {
+        console.error('Error parsing carrier JSON:', error);
+        return res.status(400).json({ success: false, message: 'Invalid carrier JSON format' });
+      }
+    }
+    
+    if (typeof doData.shipper === 'string') {
+      try {
+        doData.shipper = JSON.parse(doData.shipper);
+        console.log('Parsed shipper:', doData.shipper);
+      } catch (error) {
+        console.error('Error parsing shipper JSON:', error);
+        return res.status(400).json({ success: false, message: 'Invalid shipper JSON format' });
+      }
+    }
+    
     // Validate required fields
     if (!doData.empId) {
       return res.status(400).json({ success: false, message: 'Employee ID is required' });
@@ -140,8 +171,12 @@ export const createDO = async (req, res) => {
     
     // Validate each carrier fee item and calculate total
     let totalCarrierFees = 0;
+    console.log('🔍 Calculating total carrier fees...');
+    
     for (let i = 0; i < doData.carrier.carrierFees.length; i++) {
       const fee = doData.carrier.carrierFees[i];
+      console.log(`🔍 Fee ${i + 1}:`, fee);
+      
       if (!fee.name || !fee.quantity || !fee.amount || !fee.total) {
         return res.status(400).json({ 
           success: false, 
@@ -151,6 +186,8 @@ export const createDO = async (req, res) => {
       
       // Validate that total matches quantity * amount
       const calculatedTotal = fee.quantity * fee.amount;
+      console.log(`🔍 Fee ${i + 1} calculation: ${fee.quantity} × ${fee.amount} = ${calculatedTotal}`);
+      
       if (Math.abs(calculatedTotal - fee.total) > 0.01) { // Allow for small floating point differences
         return res.status(400).json({ 
           success: false, 
@@ -160,11 +197,13 @@ export const createDO = async (req, res) => {
       
       // Add to total carrier fees
       totalCarrierFees += fee.total;
+      console.log(`🔍 Running total: ${totalCarrierFees}`);
     }
     
     // Add total carrier fees to the carrier object
     doData.carrier.totalCarrierFees = totalCarrierFees;
     
+    console.log('✅ Final totalCarrierFees:', totalCarrierFees);
     console.log('Carrier fees:', doData.carrier.carrierFees);
     
     // Handle uploaded file if present
@@ -436,6 +475,41 @@ export const getDOFiles = async (req, res) => {
         files: doData.uploadedFiles || [],
         totalFiles: (doData.uploadedFiles || []).length
       }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Fix existing DO records with incorrect totalCarrierFees
+export const fixCarrierFees = async (req, res) => {
+  try {
+    const allDOs = await DO.find({});
+    let fixedCount = 0;
+    
+    for (const doRecord of allDOs) {
+      if (doRecord.carrier && doRecord.carrier.carrierFees) {
+        let correctTotal = 0;
+        
+        for (const fee of doRecord.carrier.carrierFees) {
+          if (fee.quantity && fee.amount) {
+            correctTotal += fee.quantity * fee.amount;
+          }
+        }
+        
+        if (doRecord.carrier.totalCarrierFees !== correctTotal) {
+          console.log(`🔧 Fixing DO ${doRecord._id}: ${doRecord.carrier.totalCarrierFees} → ${correctTotal}`);
+          doRecord.carrier.totalCarrierFees = correctTotal;
+          await doRecord.save();
+          fixedCount++;
+        }
+      }
+    }
+    
+    res.status(200).json({ 
+      success: true, 
+      message: `Fixed ${fixedCount} DO records with incorrect carrier fees`,
+      fixedCount
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

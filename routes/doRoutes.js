@@ -7,7 +7,8 @@ import {
   getDOByDateRange,
   updateDO,
   deleteDO,
-  getDOById
+  getDOById,
+  fixCarrierFees
 } from '../controllers/doController.js';
 import { isAuthenticatedUser } from '../middlewares/auth.js';
 import { doCreateUpload } from '../middlewares/upload.js';
@@ -41,6 +42,7 @@ router.put('/do/:id', updateDO);
 // Delete DO
 router.delete('/do/:id', deleteDO);
 
-
+// Fix carrier fees for all DOs
+router.post('/do/fix-carrier-fees', fixCarrierFees);
 
 export default router; 
