@@ -218,6 +218,110 @@ const cmtDocumentUpload = multer({
   { name: 'docUpload', maxCount: 1 } // Keep existing single document upload for backward compatibility
 ]);
 
+// 🔥 NEW: DO document upload middleware
+const doDocumentUpload = multer({
+  storage: isS3Configured ? getS3Storage(req => `doDocuments/${req.params.doId || 'unknown'}`) : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(__dirname, '../uploads/doDocuments');
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const timestamp = Date.now();
+      const fileName = `${file.fieldname}_${timestamp}${ext}`;
+      cb(null, fileName);
+    }
+  }),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'invoice', maxCount: 5 },
+  { name: 'contract', maxCount: 5 },
+  { name: 'bill_of_lading', maxCount: 5 },
+  { name: 'other', maxCount: 10 }
+]);
+
+// 🔥 NEW: Simple single file upload for DO
+const doSingleFileUpload = multer({
+  storage: isS3Configured ? getS3Storage(req => `doDocuments/${req.params.doId || 'unknown'}`) : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(__dirname, '../uploads/doDocuments');
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const timestamp = Date.now();
+      const fileName = `document_${timestamp}${ext}`;
+      cb(null, fileName);
+    }
+  }),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).single('document');
+
+// 🔥 NEW: DO file upload with LOAD NO folder structure
+const doFileUpload = multer({
+  storage: isS3Configured ? getS3Storage(req => {
+    // Extract LOAD NO from request body or params
+    const loadNo = req.body.loadNo || req.params.loadNo || 'unknown';
+    return `doFiles/${loadNo}`;
+  }) : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const loadNo = req.body.loadNo || req.params.loadNo || 'unknown';
+      const uploadPath = path.join(__dirname, '../uploads/doFiles', loadNo);
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const timestamp = Date.now();
+      const fileName = `${file.fieldname}_${timestamp}${ext}`;
+      cb(null, fileName);
+    }
+  }),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'invoice', maxCount: 5 },
+  { name: 'contract', maxCount: 5 },
+  { name: 'bill_of_lading', maxCount: 5 },
+  { name: 'other', maxCount: 10 }
+]);
+
+// 🔥 NEW: Simple single file upload for DO creation
+const doCreateUpload = multer({
+  storage: isS3Configured ? getS3Storage(req => {
+    // Extract LOAD NO from request body
+    const loadNo = req.body.loadNo || 'unknown';
+    return `doFiles/${loadNo}`;
+  }) : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const loadNo = req.body.loadNo || 'unknown';
+      const uploadPath = path.join(__dirname, '../uploads/doFiles', loadNo);
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const timestamp = Date.now();
+      const fileName = `document_${timestamp}${ext}`;
+      cb(null, fileName);
+    }
+  }),
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).single('document');
+
 const getS3Url = (key) => {
   if (!key || !isS3Configured) return '';
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
@@ -267,5 +371,9 @@ export {
   getS3Url,
   chatFileUpload,
   driverRegisterUpload,
-  cmtDocumentUpload
+  cmtDocumentUpload,
+  doDocumentUpload,
+  doSingleFileUpload,
+  doFileUpload,
+  doCreateUpload
 };

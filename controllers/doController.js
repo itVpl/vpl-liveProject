@@ -1,4 +1,5 @@
 import DO from '../models/doModel.js';
+import { getS3Url } from '../utils/s3Utils.js';
 
 // 🔥 NEW: Function to generate automatic load number
 const generateLoadNumber = async () => {
@@ -41,9 +42,11 @@ const generateLoadNumber = async () => {
 export const createDO = async (req, res) => {
   try {
     const doData = req.body;
+    const uploadedFile = req.file;
     
     // Debug: Log the received data
     console.log('Received DO data:', JSON.stringify(doData, null, 2));
+    console.log('Uploaded file:', uploadedFile);
     
     // Validate required fields
     if (!doData.empId) {
@@ -163,6 +166,19 @@ export const createDO = async (req, res) => {
     doData.carrier.totalCarrierFees = totalCarrierFees;
     
     console.log('Carrier fees:', doData.carrier.carrierFees);
+    
+    // Handle uploaded file if present
+    if (uploadedFile) {
+      const fileUrl = uploadedFile.location || uploadedFile.path; // S3 URL or local path
+      const s3Url = uploadedFile.location ? uploadedFile.location : getS3Url(uploadedFile.path);
+      
+      doData.uploadedFiles = [{
+        fileName: uploadedFile.originalname,
+        fileUrl: s3Url,
+        fileType: 'document',
+        uploadDate: new Date()
+      }];
+    }
     
     // Validate shipper data
     if (!doData.shipper.name || !doData.shipper.pickUpDate || !doData.shipper.containerNo || 
@@ -345,6 +361,82 @@ export const getDOById = async (req, res) => {
     }
     
     res.status(200).json({ success: true, data: doData });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Upload files for DO
+export const uploadDOFiles = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const files = req.files;
+    
+    // Check if DO exists
+    const doData = await DO.findById(id);
+    if (!doData) {
+      return res.status(404).json({ success: false, message: 'DO not found' });
+    }
+    
+    // Get the first customer's load number for folder structure
+    const loadNo = doData.customers && doData.customers.length > 0 ? doData.customers[0].loadNo : 'unknown';
+    
+    if (!files || Object.keys(files).length === 0) {
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
+    }
+    
+    const uploadedFiles = [];
+    
+    // Process each file type
+    for (const [fieldName, fileArray] of Object.entries(files)) {
+      for (const file of fileArray) {
+        const fileUrl = file.location || file.path; // S3 URL or local path
+        const s3Url = file.location ? file.location : getS3Url(file.path);
+        
+        uploadedFiles.push({
+          fileName: file.originalname,
+          fileUrl: s3Url,
+          fileType: fieldName,
+          uploadDate: new Date()
+        });
+      }
+    }
+    
+    // Add uploaded files to DO
+    doData.uploadedFiles = [...(doData.uploadedFiles || []), ...uploadedFiles];
+    await doData.save();
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Files uploaded successfully',
+      data: {
+        uploadedFiles,
+        totalFiles: doData.uploadedFiles.length
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading files:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get files for DO
+export const getDOFiles = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const doData = await DO.findById(id);
+    
+    if (!doData) {
+      return res.status(404).json({ success: false, message: 'DO not found' });
+    }
+    
+    res.status(200).json({ 
+      success: true, 
+      data: {
+        files: doData.uploadedFiles || [],
+        totalFiles: (doData.uploadedFiles || []).length
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -10,14 +10,15 @@ import {
   getDOById
 } from '../controllers/doController.js';
 import { isAuthenticatedUser } from '../middlewares/auth.js';
+import { doCreateUpload } from '../middlewares/upload.js';
 
 const router = express.Router();
 
 // Apply authentication middleware to all DO routes
 router.use(isAuthenticatedUser);
 
-// Create DO
-router.post('/do', createDO);
+// Create DO with file upload
+router.post('/do', doCreateUpload, createDO);
 
 // Get all DOs
 router.get('/do', getAllDO);
@@ -39,5 +40,7 @@ router.put('/do/:id', updateDO);
 
 // Delete DO
 router.delete('/do/:id', deleteDO);
+
+
 
 export default router; 

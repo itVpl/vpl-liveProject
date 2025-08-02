@@ -153,6 +153,24 @@ const doSchema = new mongoose.Schema({
   supportingDocs: {
     type: String
   },
+  uploadedFiles: [{
+    fileName: {
+      type: String,
+      required: true
+    },
+    fileUrl: {
+      type: String,
+      required: true
+    },
+    fileType: {
+      type: String,
+      required: true
+    },
+    uploadDate: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
