@@ -1,5 +1,42 @@
 import DO from '../models/doModel.js';
 
+// 🔥 NEW: Function to generate automatic load number
+const generateLoadNumber = async () => {
+  try {
+    let nextNumber = 1;
+    
+    // Get all DOs to find the highest load number
+    const allDOs = await DO.find({}, 'customers.loadNo');
+    
+    const allLoadNumbers = [];
+    
+    allDOs.forEach(doItem => {
+      if (doItem.customers && doItem.customers.length > 0) {
+        doItem.customers.forEach(customer => {
+          if (customer.loadNo && customer.loadNo.startsWith('L')) {
+            const numberPart = customer.loadNo.substring(1);
+            const num = parseInt(numberPart);
+            if (!isNaN(num)) {
+              allLoadNumbers.push(num);
+            }
+          }
+        });
+      }
+    });
+    
+    if (allLoadNumbers.length > 0) {
+      nextNumber = Math.max(...allLoadNumbers) + 1;
+    }
+    
+    // Format: L0001, L0002, etc.
+    return `L${nextNumber.toString().padStart(4, '0')}`;
+  } catch (error) {
+    console.error('Error generating load number:', error);
+    // Fallback: use timestamp if error occurs
+    return `L${Date.now().toString().slice(-4)}`;
+  }
+};
+
 // Create a new DO (Order)
 export const createDO = async (req, res) => {
   try {
@@ -32,18 +69,19 @@ export const createDO = async (req, res) => {
       department: 'Sales'
     };
     
-    // Validate customer data
+    // 🔥 NEW: Generate automatic load numbers for each customer
     for (let i = 0; i < doData.customers.length; i++) {
       const customer = doData.customers[i];
-      console.log(`Validating customer ${i + 1}:`, JSON.stringify(customer, null, 2));
+      console.log(`Processing customer ${i + 1}:`, JSON.stringify(customer, null, 2));
+      
+      // Generate automatic load number if not provided
+      if (!customer.loadNo || customer.loadNo.trim() === '') {
+        const generatedLoadNo = await generateLoadNumber();
+        customer.loadNo = generatedLoadNo;
+        console.log(`Generated load number for customer ${i + 1}: ${generatedLoadNo}`);
+      }
       
       // Check each field individually
-      if (!customer.loadNo) {
-        return res.status(400).json({ 
-          success: false, 
-          message: `Customer ${i + 1} is missing loadNo field` 
-        });
-      }
       if (!customer.billTo) {
         return res.status(400).json({ 
           success: false, 
@@ -88,9 +126,43 @@ export const createDO = async (req, res) => {
     }
     
     // Validate carrier data
-    if (!doData.carrier.carrierName || !doData.carrier.equipmentType || !doData.carrier.carrierFees) {
-      return res.status(400).json({ success: false, message: 'Carrier information is incomplete' });
+    if (!doData.carrier.carrierName || !doData.carrier.equipmentType) {
+      return res.status(400).json({ success: false, message: 'Carrier name and equipment type are required' });
     }
+    
+    // Validate carrier fees
+    if (!doData.carrier.carrierFees || !Array.isArray(doData.carrier.carrierFees)) {
+      return res.status(400).json({ success: false, message: 'Carrier fees must be an array' });
+    }
+    
+    // Validate each carrier fee item and calculate total
+    let totalCarrierFees = 0;
+    for (let i = 0; i < doData.carrier.carrierFees.length; i++) {
+      const fee = doData.carrier.carrierFees[i];
+      if (!fee.name || !fee.quantity || !fee.amount || !fee.total) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Carrier fee item ${i + 1} is missing required fields (name, quantity, amount, total)` 
+        });
+      }
+      
+      // Validate that total matches quantity * amount
+      const calculatedTotal = fee.quantity * fee.amount;
+      if (Math.abs(calculatedTotal - fee.total) > 0.01) { // Allow for small floating point differences
+        return res.status(400).json({ 
+          success: false, 
+          message: `Carrier fee item ${i + 1} total (${fee.total}) does not match quantity (${fee.quantity}) * amount (${fee.amount}) = ${calculatedTotal}` 
+        });
+      }
+      
+      // Add to total carrier fees
+      totalCarrierFees += fee.total;
+    }
+    
+    // Add total carrier fees to the carrier object
+    doData.carrier.totalCarrierFees = totalCarrierFees;
+    
+    console.log('Carrier fees:', doData.carrier.carrierFees);
     
     // Validate shipper data
     if (!doData.shipper.name || !doData.shipper.pickUpDate || !doData.shipper.containerNo || 
@@ -194,6 +266,40 @@ export const updateDO = async (req, res) => {
         const calculatedTotal = customer.lineHaul + customer.fsc + customer.other;
         customer.totalAmount = calculatedTotal;
       }
+    }
+    
+    // Validate carrier fees if provided in update
+    if (updateData.carrier && updateData.carrier.carrierFees) {
+      if (!Array.isArray(updateData.carrier.carrierFees)) {
+        return res.status(400).json({ success: false, message: 'Carrier fees must be an array' });
+      }
+      
+      // Validate each carrier fee item and calculate total
+      let totalCarrierFees = 0;
+      for (let i = 0; i < updateData.carrier.carrierFees.length; i++) {
+        const fee = updateData.carrier.carrierFees[i];
+        if (!fee.name || !fee.quantity || !fee.amount || !fee.total) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `Carrier fee item ${i + 1} is missing required fields (name, quantity, amount, total)` 
+          });
+        }
+        
+        // Validate that total matches quantity * amount
+        const calculatedTotal = fee.quantity * fee.amount;
+        if (Math.abs(calculatedTotal - fee.total) > 0.01) { // Allow for small floating point differences
+          return res.status(400).json({ 
+            success: false, 
+            message: `Carrier fee item ${i + 1} total (${fee.total}) does not match quantity (${fee.quantity}) * amount (${fee.amount}) = ${calculatedTotal}` 
+          });
+        }
+        
+        // Add to total carrier fees
+        totalCarrierFees += fee.total;
+      }
+      
+      // Add total carrier fees to the carrier object
+      updateData.carrier.totalCarrierFees = totalCarrierFees;
     }
     
     const updatedDO = await DO.findByIdAndUpdate(

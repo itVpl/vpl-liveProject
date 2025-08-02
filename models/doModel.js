@@ -44,9 +44,27 @@ const carrierSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  carrierFees: {
+  carrierFees: [{
+    name: {
+      type: String,
+      required: true
+    },
+    quantity: {
+      type: Number,
+      required: true
+    },
+    amount: {
+      type: Number,
+      required: true
+    },
+    total: {
+      type: Number,
+      required: true
+    }
+  }],
+  totalCarrierFees: {
     type: Number,
-    required: true
+    default: 0
   }
 });
 
