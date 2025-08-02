@@ -12,6 +12,8 @@ import {
   getHRActivities,
   getHRActivityById,
   updateHRActivity,
+  updateHRActivityColor,
+  getHRActivitiesByColor,
   deleteHRActivity,
   getHRActivityStats,
   getHRActivityReports,
@@ -47,6 +49,9 @@ router.get('/all', isAuthenticatedEmployee, getAllHRActivities);
 // 📋 GET: Get HR activities with filters
 router.get('/list', isAuthenticatedEmployee, getHRActivities);
 
+// 🎨 GET: Get HR activities by color
+router.get('/color', isAuthenticatedEmployee, getHRActivitiesByColor);
+
 // 📊 GET: Get HR activity statistics
 router.get('/stats', isAuthenticatedEmployee, getHRActivityStats);
 
@@ -61,6 +66,9 @@ router.get('/:id', isAuthenticatedEmployee, getHRActivityById);
 
 // 🔄 PUT: Update HR activity
 router.put('/:id', isAuthenticatedEmployee, updateHRActivity);
+
+// 🎨 PUT: Update HR activity color
+router.put('/:id/color', isAuthenticatedEmployee, updateHRActivityColor);
 
 // 🗑️ DELETE: Delete HR activity
 router.delete('/:id', isAuthenticatedEmployee, deleteHRActivity);

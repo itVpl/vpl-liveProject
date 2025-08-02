@@ -67,6 +67,14 @@ const hrActivitySchema = new mongoose.Schema({
     type: String, 
     enum: ['active', 'archived', 'deleted'],
     default: 'active'
+  },
+
+  // 🎨 Color for HR marking/categorization
+  color: {
+    type: String,
+    enum: ['red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'gray', 'black', 'white'],
+    default: 'blue',
+    required: false
   }
 
 }, { 

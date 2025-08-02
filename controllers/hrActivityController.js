@@ -18,7 +18,8 @@ export const createHRCallActivity = async (req, res) => {
       purpose,
       duration = 0,
       activityDate,
-      notes
+      notes,
+      color = 'blue'
     } = req.body;
 
     // Validate required fields for call
@@ -70,7 +71,8 @@ export const createHRCallActivity = async (req, res) => {
       },
       emailDetails: undefined, // Explicitly set to undefined for call activities
       activityDate: parsedActivityDate,
-      notes
+      notes,
+      color
     });
 
     await hrActivity.save();
@@ -86,6 +88,7 @@ export const createHRCallActivity = async (req, res) => {
         callDetails: hrActivity.callDetails,
         activityType: hrActivity.activityType,
         activityDate: hrActivity.activityDate,
+        color: hrActivity.color,
         createdAt: hrActivity.createdAt
       }
     });
@@ -107,7 +110,8 @@ export const createHREmailActivity = async (req, res) => {
       emailType = 'send',
       purpose,
       activityDate,
-      notes
+      notes,
+      color = 'blue'
     } = req.body;
 
     // Validate required fields for email
@@ -151,7 +155,8 @@ export const createHREmailActivity = async (req, res) => {
         purpose
       },
       activityDate: parsedActivityDate,
-      notes
+      notes,
+      color
     });
 
     await hrActivity.save();
@@ -167,6 +172,7 @@ export const createHREmailActivity = async (req, res) => {
         emailDetails: hrActivity.emailDetails,
         activityType: hrActivity.activityType,
         activityDate: hrActivity.activityDate,
+        color: hrActivity.color,
         createdAt: hrActivity.createdAt
       }
     });
@@ -262,6 +268,7 @@ export const getAllHRCallActivitiesByDate = async (req, res) => {
       } : null,
       activityDate: activity.activityDate,
       notes: activity.notes,
+      color: activity.color,
       createdAt: activity.createdAt,
       updatedAt: activity.updatedAt
     }));
@@ -377,6 +384,7 @@ export const getAllHREmailActivitiesByDate = async (req, res) => {
       } : null,
       activityDate: activity.activityDate,
       notes: activity.notes,
+      color: activity.color,
       createdAt: activity.createdAt,
       updatedAt: activity.updatedAt
     }));
@@ -1683,7 +1691,8 @@ export const updateHRActivity = async (req, res) => {
       'followUpDate',
       'followUpNotes',
       'location',
-      'relatedEmployee'
+      'relatedEmployee',
+      'color'
     ];
 
     const updates = {};
@@ -1711,12 +1720,187 @@ export const updateHRActivity = async (req, res) => {
         category: updatedActivity.category,
         outcome: updatedActivity.outcome,
         followUpRequired: updatedActivity.followUpRequired,
+        color: updatedActivity.color,
         updatedAt: updatedActivity.updatedAt
       }
     });
 
   } catch (err) {
     console.error('❌ Error updating HR activity:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+// 🎨 PUT: Update HR activity color
+export const updateHRActivityColor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { color } = req.body;
+
+    // Validate color
+    const validColors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'gray', 'black', 'white'];
+    if (!validColors.includes(color)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid color. Must be one of: ' + validColors.join(', ')
+      });
+    }
+
+    const activity = await HRActivity.findById(id);
+
+    if (!activity) {
+      return res.status(404).json({
+        success: false,
+        message: 'HR activity not found'
+      });
+    }
+
+    // Only allow HR employees to update their own activities
+    if (activity.hrEmployee.empId !== req.user.empId && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only update your own activities'
+      });
+    }
+
+    // Update color
+    activity.color = color;
+    await activity.save();
+
+    console.log(`🎨 HR Activity color updated: ${activity.callDetails?.name || activity.emailDetails?.email} - ${color}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'HR activity color updated successfully',
+      data: {
+        id: activity._id,
+        color: activity.color,
+        updatedAt: activity.updatedAt
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error updating HR activity color:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+// 🎨 GET: Get HR activities by color
+export const getHRActivitiesByColor = async (req, res) => {
+  try {
+    const { color, page = 1, limit = 50, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+
+    // Validate color
+    const validColors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'gray', 'black', 'white'];
+    if (!color || !validColors.includes(color)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid color parameter is required. Must be one of: ' + validColors.join(', ')
+      });
+    }
+
+    // Build query
+    let query = { 
+      status: 'active',
+      color: color
+    };
+
+    // Pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Sorting
+    let sort = {};
+    if (sortBy === 'activityDate') {
+      sort.activityDate = sortOrder === 'asc' ? 1 : -1;
+    } else if (sortBy === 'createdAt') {
+      sort.createdAt = sortOrder === 'asc' ? 1 : -1;
+    } else {
+      sort.createdAt = -1;
+    }
+
+    // Execute query
+    const activities = await HRActivity.find(query)
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Get total count for pagination
+    const total = await HRActivity.countDocuments(query);
+
+    // Calculate statistics for the color
+    const stats = await HRActivity.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalActivities: { $sum: 1 },
+          totalCalls: {
+            $sum: { $cond: [{ $eq: ['$activityType', 'call'] }, 1, 0] }
+          },
+          totalEmails: {
+            $sum: { $cond: [{ $eq: ['$activityType', 'email'] }, 1, 0] }
+          },
+          totalDuration: { $sum: '$callDetails.duration' }
+        }
+      }
+    ]);
+
+    const statistics = stats[0] || {
+      totalActivities: 0,
+      totalCalls: 0,
+      totalEmails: 0,
+      totalDuration: 0
+    };
+
+    // Format response
+    const formattedActivities = activities.map(activity => ({
+      id: activity._id,
+      hrEmployee: activity.hrEmployee,
+      activityType: activity.activityType,
+      callDetails: activity.callDetails ? {
+        ...activity.callDetails,
+        durationFormatted: activity.callDetails.duration > 0 
+          ? `${Math.floor(activity.callDetails.duration / 60)}h ${activity.callDetails.duration % 60}m`
+          : '0m'
+      } : null,
+      emailDetails: activity.emailDetails,
+      activityDate: activity.activityDate,
+      notes: activity.notes,
+      color: activity.color,
+      createdAt: activity.createdAt,
+      updatedAt: activity.updatedAt
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedActivities,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      },
+      statistics: {
+        color: color,
+        totalActivities: statistics.totalActivities,
+        totalCalls: statistics.totalCalls,
+        totalEmails: statistics.totalEmails,
+        totalDuration: statistics.totalDuration,
+        avgDuration: statistics.totalCalls > 0 
+          ? Math.round(statistics.totalDuration / statistics.totalCalls)
+          : 0
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching HR activities by color:', err);
     res.status(500).json({
       success: false,
       message: err.message
