@@ -17,8 +17,15 @@ const hrActivitySchema = new mongoose.Schema({
 
   // 📞 Call Details (only for call activities)
   callDetails: {
-    mobileNo: { type: String },
     name: { type: String },
+    mobileNo: { type: String },
+    totalExp: { type: String },
+    currentLocation: { type: String },
+    currentCompany: { type: String },
+    currentSalary: { type: String },
+    noticePeriod: { type: String },
+    email: { type: String },
+    comment: { type: String },
     purpose: { type: String },
     duration: { type: Number, default: 0 } // in minutes
   },

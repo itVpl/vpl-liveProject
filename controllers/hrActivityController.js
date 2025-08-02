@@ -6,8 +6,15 @@ import moment from 'moment-timezone';
 export const createHRCallActivity = async (req, res) => {
   try {
     const {
-      mobileNo,
       name,
+      mobileNo,
+      totalExp,
+      currentLocation,
+      currentCompany,
+      currentSalary,
+      noticePeriod,
+      email,
+      comment,
       purpose,
       duration = 0,
       activityDate,
@@ -49,8 +56,15 @@ export const createHRCallActivity = async (req, res) => {
       hrEmployee,
       activityType: 'call',
       callDetails: {
-        mobileNo,
         name,
+        mobileNo,
+        totalExp,
+        currentLocation,
+        currentCompany,
+        currentSalary,
+        noticePeriod,
+        email,
+        comment,
         purpose,
         duration
       },
@@ -1651,12 +1665,17 @@ export const updateHRActivity = async (req, res) => {
 
     // Update allowed fields
     const allowedUpdates = [
-      'callDetails.mobileNo',
       'callDetails.name',
+      'callDetails.mobileNo',
+      'callDetails.totalExp',
+      'callDetails.currentLocation',
+      'callDetails.currentCompany',
+      'callDetails.currentSalary',
+      'callDetails.noticePeriod',
+      'callDetails.email',
+      'callDetails.comment',
       'callDetails.purpose',
-      'callDetails.callDuration',
-      'callDetails.callTime',
-      'callDetails.callStatus',
+      'callDetails.duration',
       'notes',
       'category',
       'outcome',
