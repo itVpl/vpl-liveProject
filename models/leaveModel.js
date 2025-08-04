@@ -2,11 +2,21 @@ import mongoose from 'mongoose';
 
 const leaveSchema = new mongoose.Schema({
   empId: { type: String, required: true },
-  leaveType: { type: String, enum: ['casual', 'sick', 'custom'], required: true },
+  leaveType: { type: String, enum: ['casual', 'sick', 'custom', 'half-day'], required: true },
   fromDate: { type: Date, required: true },
   toDate: { type: Date, required: true },
   reason: { type: String },
   totalDays: { type: Number },
+  // 🔹 Half-day functionality
+  isHalfDay: { type: Boolean, default: false },
+  halfDayType: { 
+    type: String, 
+    enum: ['first_half', 'second_half', null], 
+    default: null 
+  },
+  // 🔹 Time slots for half-day (optional)
+  halfDayStartTime: { type: String }, // Format: "09:00"
+  halfDayEndTime: { type: String },   // Format: "13:00"
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   appliedAt: { type: Date, default: Date.now },
   reviewedBy: { type: String }, // HR empId

@@ -1,6 +1,8 @@
 import express from 'express';
 import { 
   applyLeave, 
+  applyHalfDayLeave,
+  applyHalfDayLeaveWithBalance,
   updateLeaveStatus, 
   getAllLeaves, 
   getLeavesByEmployee, 
@@ -20,6 +22,7 @@ const router = express.Router();
 
 // 📅 Basic Leave Operations
 router.post('/apply', isAuthenticatedEmployee, applyLeave);
+router.post('/apply-half-day', isAuthenticatedEmployee, applyHalfDayLeave);
 router.get('/all', isAuthenticatedEmployee, isHRDepartment, getAllLeaves);
 router.get('/current-month', isAuthenticatedEmployee, isHRDepartment, getCurrentMonthLeaves);
 router.patch('/status/:id', isAuthenticatedEmployee, isHRDepartment, updateLeaveStatus);
@@ -32,8 +35,7 @@ router.delete('/cancel/:id', isAuthenticatedEmployee, cancelLeave);
 router.get('/balance/:empId', isAuthenticatedEmployee, isHRDepartment, getLeaveBalance);
 router.get('/my-balance', isAuthenticatedEmployee, getMyLeaveBalance);
 router.post('/apply-with-balance', isAuthenticatedEmployee, applyLeaveWithBalance);
+router.post('/apply-half-day-with-balance', isAuthenticatedEmployee, applyHalfDayLeaveWithBalance);
 router.patch('/update-balance/:empId', isAuthenticatedEmployee, isHRDepartment, updateLeaveBalance);
-
-
 
 export default router;

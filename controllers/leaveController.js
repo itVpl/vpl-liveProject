@@ -6,26 +6,35 @@ import moment from 'moment-timezone';
 // 🔹 Apply for Leave
 export const applyLeave = async (req, res) => {
   try {
-    const { empId, leaveType, fromDate, toDate, reason, timezone } = req.body;
+    const { 
+      empId, 
+      leaveType, 
+      fromDate, 
+      toDate, 
+      reason, 
+      timezone,
+      isHalfDay = false,
+      halfDayType = null,
+      halfDayStartTime = null,
+      halfDayEndTime = null
+    } = req.body;
 
     // Default timezone for US shift
     const userTimezone = timezone || 'America/New_York';
 
-    // Convert dates to user's timezone
-    const fromDateTz = moment.tz(fromDate, userTimezone).startOf('day').toDate();
-    
-    // Check if fromDate and toDate are the same day
+    // 🔹 Auto-detect half-day if leaveType is 'half-day'
+    let finalIsHalfDay = isHalfDay;
+    if (leaveType === 'half-day') {
+      finalIsHalfDay = true;
+    }
+
+    // 🔹 Fix date range issues - ensure proper date handling
     const fromMoment = moment.tz(fromDate, userTimezone);
     const toMoment = moment.tz(toDate, userTimezone);
     
-    let toDateTz;
-    if (fromMoment.isSame(toMoment, 'day')) {
-      // Same day leave - use startOf('day') for both to avoid timezone issues
-      toDateTz = moment.tz(toDate, userTimezone).startOf('day').toDate();
-    } else {
-      // Multi-day leave - use endOf('day') for the end date
-      toDateTz = moment.tz(toDate, userTimezone).endOf('day').toDate();
-    }
+    // Always use startOf('day') for both dates to avoid timezone issues
+    const fromDateTz = fromMoment.startOf('day').toDate();
+    const toDateTz = toMoment.startOf('day').toDate();
 
     // ✅ 1. Validate Dates
     if (fromDateTz > toDateTz) {
@@ -42,7 +51,25 @@ export const applyLeave = async (req, res) => {
       });
     }
 
-    // ✅ 2. Check overlapping leaves
+    // ✅ 2. Validate Half-day parameters
+    if (finalIsHalfDay) {
+      if (!halfDayType || !['first_half', 'second_half'].includes(halfDayType)) {
+        return res.status(400).json({
+          success: false,
+          message: "Half-day type must be 'first_half' or 'second_half'"
+        });
+      }
+
+      // Half-day can only be applied for single day leaves
+      if (!fromMoment.isSame(toMoment, 'day')) {
+        return res.status(400).json({
+          success: false,
+          message: "Half-day leave can only be applied for single day"
+        });
+      }
+    }
+
+    // ✅ 3. Check overlapping leaves (including half-day overlaps)
     const overlapping = await LeaveRequest.findOne({
       empId,
       status: { $ne: 'rejected' },
@@ -61,10 +88,15 @@ export const applyLeave = async (req, res) => {
       });
     }
 
-    // ✅ 3. totalDays calculation
-    const totalDays = (toDateTz - fromDateTz) / (1000 * 60 * 60 * 24) + 1;
+    // ✅ 4. Calculate totalDays (considering half-day)
+    let totalDays;
+    if (finalIsHalfDay) {
+      totalDays = 0.5; // Half day counts as 0.5 days
+    } else {
+      totalDays = differenceInDays(toDateTz, fromDateTz) + 1;
+    }
 
-    // ✅ 4. Restrict casual/sick to only 1 leave per month
+    // ✅ 5. Restrict casual/sick to only 1 leave per month
     if (leaveType === "casual" || leaveType === "sick") {
       const start = moment.tz(userTimezone).startOf('month').toDate();
       const end = moment.tz(userTimezone).endOf('month').toDate();
@@ -84,17 +116,27 @@ export const applyLeave = async (req, res) => {
       }
     }
 
-    // ✅ 5. Allow custom leave with no restriction
-    const leave = await LeaveRequest.create({
+    // ✅ 6. Create leave request with half-day support
+    const leaveData = {
       empId,
       leaveType,
       fromDate: fromDateTz,
       toDate: toDateTz,
       reason,
-      totalDays
-    });
+      totalDays,
+      isHalfDay: finalIsHalfDay,
+      halfDayType: finalIsHalfDay ? halfDayType : null,
+      halfDayStartTime: finalIsHalfDay ? halfDayStartTime : null,
+      halfDayEndTime: finalIsHalfDay ? halfDayEndTime : null
+    };
 
-    res.status(201).json({ success: true, leave });
+    const leave = await LeaveRequest.create(leaveData);
+
+    res.status(201).json({ 
+      success: true, 
+      leave,
+      message: finalIsHalfDay ? `Half-day ${leaveType} leave applied successfully` : `${leaveType} leave applied successfully`
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -323,24 +365,70 @@ export const getLeaveBalance = async (req, res) => {
 // 🔹 Smart Leave Application (with balance check)
 export const applyLeaveWithBalance = async (req, res) => {
   try {
-    const { empId, leaveType, fromDate, toDate, reason } = req.body;
+    const { 
+      empId, 
+      leaveType, 
+      fromDate, 
+      toDate, 
+      reason,
+      isHalfDay = false,
+      halfDayType = null,
+      halfDayStartTime = null,
+      halfDayEndTime = null,
+      timezone
+    } = req.body;
+
+    // Default timezone for US shift
+    const userTimezone = timezone || 'America/New_York';
+
+    // 🔹 Auto-detect half-day if leaveType is 'half-day'
+    let finalIsHalfDay = isHalfDay;
+    if (leaveType === 'half-day') {
+      finalIsHalfDay = true;
+    }
+
+    // 🔹 Fix date range issues - ensure proper date handling
+    const fromMoment = moment.tz(fromDate, userTimezone);
+    const toMoment = moment.tz(toDate, userTimezone);
+    
+    // Always use startOf('day') for both dates to avoid timezone issues
+    const fromDateTz = fromMoment.startOf('day').toDate();
+    const toDateTz = toMoment.startOf('day').toDate();
 
     // ✅ 1. Validate Dates
-    if (new Date(fromDate) > new Date(toDate)) {
+    if (fromDateTz > toDateTz) {
       return res.status(400).json({
         success: false,
         message: "From Date must be before To Date"
       });
     }
 
-    if (new Date(fromDate) < new Date().setHours(0, 0, 0, 0)) {
+    if (fromDateTz < moment.tz(userTimezone).startOf('day').toDate()) {
       return res.status(400).json({
         success: false,
         message: "Cannot apply leave for past dates"
       });
     }
 
-    // ✅ 2. Get Employee and Check Balance
+    // ✅ 2. Validate Half-day parameters
+    if (finalIsHalfDay) {
+      if (!halfDayType || !['first_half', 'second_half'].includes(halfDayType)) {
+        return res.status(400).json({
+          success: false,
+          message: "Half-day type must be 'first_half' or 'second_half'"
+        });
+      }
+
+      // Half-day can only be applied for single day leaves
+      if (!fromMoment.isSame(toMoment, 'day')) {
+        return res.status(400).json({
+          success: false,
+          message: "Half-day leave can only be applied for single day"
+        });
+      }
+    }
+
+    // ✅ 3. Get Employee and Check Balance
     const employee = await Employee.findOne({ empId });
     if (!employee) {
       return res.status(404).json({
@@ -349,8 +437,13 @@ export const applyLeaveWithBalance = async (req, res) => {
       });
     }
 
-    // Calculate required days
-    const requiredDays = differenceInDays(new Date(toDate), new Date(fromDate)) + 1;
+    // Calculate required days (considering half-day)
+    let requiredDays;
+    if (finalIsHalfDay) {
+      requiredDays = 0.5; // Half day counts as 0.5 days
+    } else {
+      requiredDays = differenceInDays(toDateTz, fromDateTz) + 1;
+    }
 
     // Get current balance
     const currentYear = new Date().getFullYear();
@@ -384,7 +477,7 @@ export const applyLeaveWithBalance = async (req, res) => {
       earned: employee.leaveBalance.earned - (leaveUsage.earned || 0)
     };
 
-    // ✅ 3. Check if enough balance available
+    // ✅ 4. Check if enough balance available
     if (leaveType !== 'custom' && remainingBalance[leaveType] < requiredDays) {
       return res.status(400).json({
         success: false,
@@ -394,14 +487,14 @@ export const applyLeaveWithBalance = async (req, res) => {
       });
     }
 
-    // ✅ 4. Check overlapping leaves
+    // ✅ 5. Check overlapping leaves (including half-day overlaps)
     const overlapping = await LeaveRequest.findOne({
       empId,
       status: { $ne: 'rejected' },
       $or: [
         {
-          fromDate: { $lte: new Date(toDate) },
-          toDate: { $gte: new Date(fromDate) }
+          fromDate: { $lte: toDateTz },
+          toDate: { $gte: fromDateTz }
         }
       ]
     });
@@ -413,22 +506,98 @@ export const applyLeaveWithBalance = async (req, res) => {
       });
     }
 
-    // ✅ 5. Create leave request
-    const leave = await LeaveRequest.create({
+    // ✅ 6. Create leave request with half-day support
+    const leaveData = {
       empId,
       leaveType,
-      fromDate,
-      toDate,
+      fromDate: fromDateTz,
+      toDate: toDateTz,
       reason,
-      totalDays: requiredDays
-    });
+      totalDays: requiredDays,
+      isHalfDay,
+      halfDayType: isHalfDay ? halfDayType : null,
+      halfDayStartTime: isHalfDay ? halfDayStartTime : null,
+      halfDayEndTime: isHalfDay ? halfDayEndTime : null
+    };
+
+    const leave = await LeaveRequest.create(leaveData);
 
     res.status(201).json({ 
       success: true, 
       leave,
       balance: remainingBalance,
-      message: `Leave applied successfully. ${leaveType} leave balance remaining: ${remainingBalance[leaveType]} days`
+      message: isHalfDay 
+        ? `Half-day ${leaveType} leave applied successfully. ${leaveType} leave balance remaining: ${remainingBalance[leaveType]} days`
+        : `Leave applied successfully. ${leaveType} leave balance remaining: ${remainingBalance[leaveType]} days`
     });
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 🔹 Apply Half-Day Leave (dedicated function)
+export const applyHalfDayLeave = async (req, res) => {
+  try {
+    const { 
+      empId, 
+      leaveType, 
+      fromDate, 
+      toDate, 
+      reason, 
+      timezone,
+      halfDayType,
+      halfDayStartTime = null,
+      halfDayEndTime = null
+    } = req.body;
+
+    // Set isHalfDay to true for this function
+    req.body.isHalfDay = true;
+    
+    // Validate half-day type
+    if (!halfDayType || !['first_half', 'second_half'].includes(halfDayType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Half-day type must be 'first_half' or 'second_half'"
+      });
+    }
+
+    // Call the main applyLeave function with half-day parameters
+    return await applyLeave(req, res);
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 🔹 Apply Half-Day Leave with Balance Check (dedicated function)
+export const applyHalfDayLeaveWithBalance = async (req, res) => {
+  try {
+    const { 
+      empId, 
+      leaveType, 
+      fromDate, 
+      toDate, 
+      reason, 
+      timezone,
+      halfDayType,
+      halfDayStartTime = null,
+      halfDayEndTime = null
+    } = req.body;
+
+    // Set isHalfDay to true for this function
+    req.body.isHalfDay = true;
+    
+    // Validate half-day type
+    if (!halfDayType || !['first_half', 'second_half'].includes(halfDayType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Half-day type must be 'first_half' or 'second_half'"
+      });
+    }
+
+    // Call the main applyLeaveWithBalance function with half-day parameters
+    return await applyLeaveWithBalance(req, res);
 
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
