@@ -184,6 +184,20 @@ const doSchema = new mongoose.Schema({
 // Update the updatedAt field before saving
 doSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
+  
+  // Ensure totalCarrierFees is calculated correctly
+  if (this.carrier && this.carrier.carrierFees && Array.isArray(this.carrier.carrierFees)) {
+    let totalCarrierFees = 0;
+    for (const fee of this.carrier.carrierFees) {
+      if (fee.quantity && fee.amount) {
+        const quantity = Number(fee.quantity);
+        const amount = Number(fee.amount);
+        totalCarrierFees += quantity * amount;
+      }
+    }
+    this.carrier.totalCarrierFees = totalCarrierFees;
+  }
+  
   next();
 });
 

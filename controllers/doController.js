@@ -184,19 +184,24 @@ export const createDO = async (req, res) => {
         });
       }
       
-      // Validate that total matches quantity * amount
-      const calculatedTotal = fee.quantity * fee.amount;
-      console.log(`🔍 Fee ${i + 1} calculation: ${fee.quantity} × ${fee.amount} = ${calculatedTotal}`);
+      // Ensure all values are numbers, not strings
+      const quantity = Number(fee.quantity);
+      const amount = Number(fee.amount);
+      const total = Number(fee.total);
       
-      if (Math.abs(calculatedTotal - fee.total) > 0.01) { // Allow for small floating point differences
+      // Validate that total matches quantity * amount
+      const calculatedTotal = quantity * amount;
+      console.log(`🔍 Fee ${i + 1} calculation: ${quantity} × ${amount} = ${calculatedTotal}`);
+      
+      if (Math.abs(calculatedTotal - total) > 0.01) { // Allow for small floating point differences
         return res.status(400).json({ 
           success: false, 
-          message: `Carrier fee item ${i + 1} total (${fee.total}) does not match quantity (${fee.quantity}) * amount (${fee.amount}) = ${calculatedTotal}` 
+          message: `Carrier fee item ${i + 1} total (${total}) does not match quantity (${quantity}) * amount (${amount}) = ${calculatedTotal}` 
         });
       }
       
-      // Add to total carrier fees
-      totalCarrierFees += fee.total;
+      // Add to total carrier fees (ensure it's a number)
+      totalCarrierFees += total;
       console.log(`🔍 Running total: ${totalCarrierFees}`);
     }
     
@@ -340,17 +345,22 @@ export const updateDO = async (req, res) => {
           });
         }
         
+        // Ensure all values are numbers, not strings
+        const quantity = Number(fee.quantity);
+        const amount = Number(fee.amount);
+        const total = Number(fee.total);
+        
         // Validate that total matches quantity * amount
-        const calculatedTotal = fee.quantity * fee.amount;
-        if (Math.abs(calculatedTotal - fee.total) > 0.01) { // Allow for small floating point differences
+        const calculatedTotal = quantity * amount;
+        if (Math.abs(calculatedTotal - total) > 0.01) { // Allow for small floating point differences
           return res.status(400).json({ 
             success: false, 
-            message: `Carrier fee item ${i + 1} total (${fee.total}) does not match quantity (${fee.quantity}) * amount (${fee.amount}) = ${calculatedTotal}` 
+            message: `Carrier fee item ${i + 1} total (${total}) does not match quantity (${quantity}) * amount (${amount}) = ${calculatedTotal}` 
           });
         }
         
-        // Add to total carrier fees
-        totalCarrierFees += fee.total;
+        // Add to total carrier fees (ensure it's a number)
+        totalCarrierFees += total;
       }
       
       // Add total carrier fees to the carrier object
@@ -493,7 +503,9 @@ export const fixCarrierFees = async (req, res) => {
         
         for (const fee of doRecord.carrier.carrierFees) {
           if (fee.quantity && fee.amount) {
-            correctTotal += fee.quantity * fee.amount;
+            const quantity = Number(fee.quantity);
+            const amount = Number(fee.amount);
+            correctTotal += quantity * amount;
           }
         }
         
