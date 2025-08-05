@@ -14,7 +14,10 @@ import {
   assignDriverAndVehicle,
   approveBidByOps,
   placeBidByInhouseUser,
-  getBidsPendingIntermediateApproval
+  getBidsPendingIntermediateApproval,
+  approveBidBySalesUser,
+  getBidsWithIntermediateApprovalStatus,
+  getIntermediateApprovalSummary
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -29,6 +32,12 @@ bidRouter.get('/stats', getBidStats);
 
 // Get bids pending intermediate approval
 bidRouter.get('/pending-intermediate-approval', getBidsPendingIntermediateApproval);
+
+// Get intermediate rate approval summary
+bidRouter.get('/intermediate-approval-summary', getIntermediateApprovalSummary);
+
+// Get bids with intermediate approval status
+bidRouter.get('/intermediate-approval-status', getBidsWithIntermediateApprovalStatus);
 
 // Specific routes first (before parameterized routes)
 bidRouter.post('/place', isTrucker, placeBid); // Only truckers can place bids
@@ -45,11 +54,10 @@ bidRouter.delete('/:bidId', isTrucker, withdrawBid); // Only truckers can withdr
 bidRouter.put('/intermediate/:bidId/approve', approveBidIntermediate);
 // Add auto-approve with 5% markup route
 bidRouter.put('/intermediate/:bidId/auto-approve', approveBidIntermediateAuto);
-
 bidRouter.get('/accepted', isTrucker, getAcceptedBidsForTrucker); // Only truckers can view their accepted bids
-
-bidRouter.post('/:bidId/assign-driver', isTrucker, assignDriverAndVehicle); // Trucker assigns driver/vehicle details
-
-bidRouter.put('/:bidId/approve', approveBidByOps); // Employee approves bid (basic, no auth)
+bidRouter.post('/:bidId/assign-driver', isTrucker, assignDriverAndVehicle); // Trucker assigns driver/vehicle details as a reference of the inhouse user
+bidRouter.put('/:bidId/approve', approveBidByOps); // Employee approves bid (basic, no auth) as a reference of the inhouse user
+// 🔥 NEW: Enhanced bid approval by Sales users
+bidRouter.put('/:bidId/approve-by-sales', approveBidBySalesUser); // Sales users can approve bids  for the reference of the inhouse user
 
 export default bidRouter;

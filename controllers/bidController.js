@@ -895,24 +895,256 @@ export const getBidsPendingIntermediateApproval = async (req, res, next) => {
     }
 };
 
-// ✅ Inhouse user places bid on behalf of trucker
+// ✅ Get intermediate rate approval summary
+export const getIntermediateApprovalSummary = async (req, res, next) => {
+    try {
+        const { loadId, carrierId } = req.query;
+
+        // Build filter object
+        const filter = {};
+        if (loadId) {
+            filter.load = loadId;
+        }
+        if (carrierId) {
+            filter.carrier = carrierId;
+        }
+
+        // Get summary statistics
+        const summary = await Bid.aggregate([
+            { $match: filter },
+            {
+                $group: {
+                    _id: null,
+                    totalBids: { $sum: 1 },
+                    pendingApproval: { $sum: { $cond: [{ $eq: ['$status', 'PendingApproval'] }, 1, 0] } },
+                    pending: { $sum: { $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0] } },
+                    accepted: { $sum: { $cond: [{ $eq: ['$status', 'Accepted'] }, 1, 0] } },
+                    rejected: { $sum: { $cond: [{ $eq: ['$status', 'Rejected'] }, 1, 0] } },
+                    withIntermediateRate: { $sum: { $cond: [{ $ne: ['$intermediateRate', null] }, 1, 0] } },
+                    withoutIntermediateRate: { $sum: { $cond: [{ $eq: ['$intermediateRate', null] }, 1, 0] } },
+                    avgOriginalRate: { $avg: '$rate' },
+                    avgIntermediateRate: { $avg: '$intermediateRate' },
+                    totalOriginalRate: { $sum: '$rate' },
+                    totalIntermediateRate: { $sum: '$intermediateRate' }
+                }
+            }
+        ]);
+
+        // Get recent bids with approval status
+        const recentBids = await Bid.find(filter)
+            .populate('load', 'origin destination commodity weight vehicleType shipmentNumber')
+            .populate('carrier', 'compName mc_dot_no city state')
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .select('rate intermediateRate status createdAt load carrier');
+
+        const formattedRecentBids = recentBids.map(bid => ({
+            _id: bid._id,
+            load: bid.load,
+            carrier: bid.carrier,
+            originalRate: bid.rate,
+            intermediateRate: bid.intermediateRate,
+            status: bid.status,
+            createdAt: bid.createdAt,
+            approvalStatus: {
+                hasIntermediateRate: bid.intermediateRate !== null,
+                isPendingApproval: bid.status === 'PendingApproval',
+                isPending: bid.status === 'Pending',
+                isAccepted: bid.status === 'Accepted',
+                isRejected: bid.status === 'Rejected',
+                rateDifference: bid.intermediateRate ? bid.intermediateRate - bid.rate : null,
+                rateDifferencePercentage: bid.intermediateRate ? ((bid.intermediateRate - bid.rate) / bid.rate * 100).toFixed(2) : null
+            }
+        }));
+
+        const result = summary[0] || {
+            totalBids: 0,
+            pendingApproval: 0,
+            pending: 0,
+            accepted: 0,
+            rejected: 0,
+            withIntermediateRate: 0,
+            withoutIntermediateRate: 0,
+            avgOriginalRate: 0,
+            avgIntermediateRate: 0,
+            totalOriginalRate: 0,
+            totalIntermediateRate: 0
+        };
+
+        // Calculate additional metrics
+        const approvalRate = result.totalBids > 0 ? ((result.withIntermediateRate / result.totalBids) * 100).toFixed(2) : 0;
+        const avgRateIncrease = result.avgOriginalRate > 0 && result.avgIntermediateRate > 0 ? 
+            ((result.avgIntermediateRate - result.avgOriginalRate) / result.avgOriginalRate * 100).toFixed(2) : 0;
+
+        res.status(200).json({
+            success: true,
+            message: 'Intermediate rate approval summary retrieved successfully',
+            summary: {
+                ...result,
+                approvalRate: `${approvalRate}%`,
+                avgRateIncrease: `${avgRateIncrease}%`,
+                totalRateIncrease: result.totalIntermediateRate - result.totalOriginalRate
+            },
+            recentBids: formattedRecentBids,
+            filters: {
+                loadId: loadId || 'All loads',
+                carrierId: carrierId || 'All carriers'
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in getIntermediateApprovalSummary:', error);
+        next(error);
+    }
+};
+
+// ✅ Get bids with intermediate rate approval status
+export const getBidsWithIntermediateApprovalStatus = async (req, res, next) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            status,
+            loadId,
+            carrierId,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // Build filter object
+        const filter = {};
+
+        // Apply filters
+        if (status) {
+            filter.status = status;
+        }
+        if (loadId) {
+            filter.load = loadId;
+        }
+        if (carrierId) {
+            filter.carrier = carrierId;
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // Find bids with populated data
+        const bids = await Bid.find(filter)
+            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber status')
+            .populate('carrier', 'compName mc_dot_no city state phoneNo email')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Bid.countDocuments(filter);
+
+        // Get statistics
+        const stats = await Bid.aggregate([
+            { $match: filter },
+            {
+                $group: {
+                    _id: null,
+                    totalBids: { $sum: 1 },
+                    pendingApproval: { $sum: { $cond: [{ $eq: ['$status', 'PendingApproval'] }, 1, 0] } },
+                    pending: { $sum: { $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0] } },
+                    accepted: { $sum: { $cond: [{ $eq: ['$status', 'Accepted'] }, 1, 0] } },
+                    rejected: { $sum: { $cond: [{ $eq: ['$status', 'Rejected'] }, 1, 0] } },
+                    withIntermediateRate: { $sum: { $cond: [{ $ne: ['$intermediateRate', null] }, 1, 0] } },
+                    withoutIntermediateRate: { $sum: { $cond: [{ $eq: ['$intermediateRate', null] }, 1, 0] } },
+                    avgOriginalRate: { $avg: '$rate' },
+                    avgIntermediateRate: { $avg: '$intermediateRate' }
+                }
+            }
+        ]);
+
+        // Format response with approval status
+        const formattedBids = bids.map(bid => ({
+            _id: bid._id,
+            load: bid.load,
+            carrier: bid.carrier,
+            originalRate: bid.rate,
+            intermediateRate: bid.intermediateRate,
+            message: bid.message,
+            estimatedPickupDate: bid.estimatedPickupDate,
+            estimatedDeliveryDate: bid.estimatedDeliveryDate,
+            status: bid.status,
+            rejectionReason: bid.rejectionReason,
+            acceptedAt: bid.acceptedAt,
+            rejectedAt: bid.rejectedAt,
+            createdAt: bid.createdAt,
+            updatedAt: bid.updatedAt,
+            driverName: bid.driverName,
+            driverPhone: bid.driverPhone,
+            vehicleNumber: bid.vehicleNumber,
+            vehicleType: bid.vehicleType,
+            doDocument: bid.doDocument,
+            opsApproved: bid.opsApproved,
+            opsApprovedAt: bid.opsApprovedAt,
+            placedByInhouseUser: bid.placedByInhouseUser,
+            // Approval status indicators
+            approvalStatus: {
+                hasIntermediateRate: bid.intermediateRate !== null,
+                isPendingApproval: bid.status === 'PendingApproval',
+                isPending: bid.status === 'Pending',
+                isAccepted: bid.status === 'Accepted',
+                isRejected: bid.status === 'Rejected',
+                rateDifference: bid.intermediateRate ? bid.intermediateRate - bid.rate : null,
+                rateDifferencePercentage: bid.intermediateRate ? ((bid.intermediateRate - bid.rate) / bid.rate * 100).toFixed(2) : null
+            }
+        }));
+
+        res.status(200).json({
+            success: true,
+            message: 'Bids with intermediate approval status retrieved successfully',
+            bids: formattedBids,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalBids: total,
+            statistics: stats[0] || {
+                totalBids: 0,
+                pendingApproval: 0,
+                pending: 0,
+                accepted: 0,
+                rejected: 0,
+                withIntermediateRate: 0,
+                withoutIntermediateRate: 0,
+                avgOriginalRate: 0,
+                avgIntermediateRate: 0
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in getBidsWithIntermediateApprovalStatus:', error);
+        next(error);
+    }
+};
+
+// 🔥 ENHANCED: Inhouse user places bid on behalf of trucker with better validation and notifications
 export const placeBidByInhouseUser = async (req, res, next) => {
     try {
-        const { loadId, truckerId, empId, rate, message, estimatedPickupDate, estimatedDeliveryDate } = req.body;
+        const { 
+            loadId, 
+            truckerId, 
+            empId, 
+            rate, 
+            message, 
+            estimatedPickupDate, 
+            estimatedDeliveryDate,
+            driverName,
+            driverPhone,
+            vehicleNumber,
+            vehicleType
+        } = req.body;
 
-        console.log('Request body:', req.body);
-        console.log('empId received:', empId);
-
-        // Validate required fields
-        if (!empId) {
+        // 🔥 NEW: Enhanced validation
+        if (!empId || !loadId || !truckerId || !rate) {
             return res.status(400).json({
                 success: false,
-                message: 'empId is required'
+                message: 'empId, loadId, truckerId, and rate are required'
             });
         }
 
         // Check if load exists and is available for bidding
-        const load = await Load.findById(loadId);
+        const load = await Load.findById(loadId).populate('shipper', 'compName email');
         if (!load) {
             return res.status(404).json({
                 success: false,
@@ -927,12 +1159,26 @@ export const placeBidByInhouseUser = async (req, res, next) => {
             });
         }
 
-        // Check if trucker exists
+        // Check if trucker exists and is approved
         const trucker = await ShipperDriver.findById(truckerId);
         if (!trucker) {
             return res.status(404).json({
                 success: false,
                 message: 'Trucker not found'
+            });
+        }
+
+        if (trucker.status !== 'approved') {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot place bid for unapproved trucker'
+            });
+        }
+
+        if (trucker.userType !== 'trucker') {
+            return res.status(400).json({
+                success: false,
+                message: 'Can only place bids for truckers'
             });
         }
 
@@ -949,6 +1195,7 @@ export const placeBidByInhouseUser = async (req, res, next) => {
             });
         }
 
+        // 🔥 NEW: Enhanced bid creation with driver and vehicle info
         const bid = new Bid({
             load: loadId,
             carrier: truckerId,
@@ -958,19 +1205,152 @@ export const placeBidByInhouseUser = async (req, res, next) => {
             estimatedDeliveryDate,
             status: 'PendingApproval',
             intermediateRate: null,
-            placedByInhouseUser: empId
+            placedByInhouseUser: empId,
+            driverName: driverName || '',
+            driverPhone: driverPhone || '',
+            vehicleNumber: vehicleNumber || '',
+            vehicleType: vehicleType || ''
         });
 
-        console.log('Bid object before save:', bid);
-
         await bid.save();
-
-        console.log('Bid saved with placedByInhouseUser:', bid.placedByInhouseUser);
 
         // Update load status to 'Bidding' if it was 'Posted'
         if (load.status === 'Posted') {
             load.status = 'Bidding';
             await load.save();
+        }
+
+        // 🔥 NEW: Enhanced email notifications
+        try {
+            // Notify shipper about new bid
+            if (load.shipper && load.shipper.email) {
+                const shipperSubject = `New Bid Received - ${load.origin.city} to ${load.destination.city}`;
+                const shipperHtml = `
+                    <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                      <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                        <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">💰 New Bid Received</h1>
+                        <div style="background: #27ae60; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                          <h2 style="margin: 0; font-size: 20px;">${trucker.compName}</h2>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                          <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Bid Details</h3>
+                          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                            <div>
+                              <strong style="color: #34495e;">📍 Route:</strong><br>
+                              <span style="color: #7f8c8d;">${load.origin.city} → ${load.destination.city}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">💰 Bid Amount:</strong><br>
+                              <span style="color: #7f8c8d;">$${rate}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">🚛 Trucker:</strong><br>
+                              <span style="color: #7f8c8d;">${trucker.compName}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">👤 Placed By:</strong><br>
+                              <span style="color: #7f8c8d;">CMT Team</span>
+                            </div>
+                            ${driverName ? `
+                            <div>
+                              <strong style="color: #34495e;">👨‍💼 Driver:</strong><br>
+                              <span style="color: #7f8c8d;">${driverName}</span>
+                            </div>
+                            ` : ''}
+                            ${vehicleNumber ? `
+                            <div>
+                              <strong style="color: #34495e;">🚚 Vehicle:</strong><br>
+                              <span style="color: #7f8c8d;">${vehicleNumber}</span>
+                            </div>
+                            ` : ''}
+                          </div>
+                        </div>
+                        
+                        <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                          <p style="margin: 0; color: #27ae60; font-weight: bold;">💡 Ready to review this bid?</p>
+                        </div>
+                        
+                        <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                          Login to your VPL account to review and accept/reject this bid!
+                        </p>
+                      </div>
+                    </div>
+                `;
+
+                await sendEmail({
+                    to: load.shipper.email,
+                    subject: shipperSubject,
+                    html: shipperHtml
+                });
+            }
+
+            // Notify trucker about bid placement
+            if (trucker.email) {
+                const truckerSubject = `Bid Placed on Your Behalf - ${load.origin.city} to ${load.destination.city}`;
+                const truckerHtml = `
+                    <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                      <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                        <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">🎯 Bid Placed Successfully</h1>
+                        <div style="background: #3498db; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                          <h2 style="margin: 0; font-size: 20px;">CMT Team Assistance</h2>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                          <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Bid Details</h3>
+                          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                            <div>
+                              <strong style="color: #34495e;">📍 Route:</strong><br>
+                              <span style="color: #7f8c8d;">${load.origin.city} → ${load.destination.city}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">💰 Bid Amount:</strong><br>
+                              <span style="color: #7f8c8d;">$${rate}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">📅 Pickup Date:</strong><br>
+                              <span style="color: #7f8c8d;">${estimatedPickupDate ? new Date(estimatedPickupDate).toLocaleDateString() : 'TBD'}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">📅 Delivery Date:</strong><br>
+                              <span style="color: #7f8c8d;">${estimatedDeliveryDate ? new Date(estimatedDeliveryDate).toLocaleDateString() : 'TBD'}</span>
+                            </div>
+                            ${driverName ? `
+                            <div>
+                              <strong style="color: #34495e;">👨‍💼 Driver:</strong><br>
+                              <span style="color: #7f8c8d;">${driverName}</span>
+                            </div>
+                            ` : ''}
+                            ${vehicleNumber ? `
+                            <div>
+                              <strong style="color: #34495e;">🚚 Vehicle:</strong><br>
+                              <span style="color: #7f8c8d;">${vehicleNumber}</span>
+                            </div>
+                            ` : ''}
+                          </div>
+                        </div>
+                        
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                          <p style="margin: 0; color: #856404; font-weight: bold;">⏳ Status: Pending Approval</p>
+                        </div>
+                        
+                        <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                          Our CMT team has placed this bid on your behalf. You'll be notified once the shipper reviews it.
+                        </p>
+                      </div>
+                    </div>
+                `;
+
+                await sendEmail({
+                    to: trucker.email,
+                    subject: truckerSubject,
+                    html: truckerHtml
+                });
+            }
+
+            console.log(`📧 Bid notifications sent to shipper and trucker`);
+        } catch (emailError) {
+            console.error('❌ Error sending bid notifications:', emailError);
         }
 
         res.status(201).json({
@@ -979,6 +1359,289 @@ export const placeBidByInhouseUser = async (req, res, next) => {
             bid,
         });
     } catch (error) {
+        console.error('❌ Error in placeBidByInhouseUser:', error);
+        next(error);
+    }
+};
+
+// 🔥 NEW: Enhanced bid approval by Sales users with better notifications
+export const approveBidBySalesUser = async (req, res, next) => {
+    try {
+        const { bidId } = req.params;
+        const { status, reason, shipmentNumber, origin, destination } = req.body;
+
+        // Validate user is Sales department
+        if (!req.user || req.user.department !== 'Sales') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only Sales department users can approve bids'
+            });
+        }
+
+        const bid = await Bid.findById(bidId)
+            .populate('load')
+            .populate('carrier', 'compName email phoneNo')
+            .populate('load.shipper', 'compName email');
+
+        if (!bid) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Bid not found' 
+            });
+        }
+
+        // Check if bid is in correct status for approval
+        if (bid.status !== 'PendingApproval') {
+            return res.status(400).json({
+                success: false,
+                message: 'Bid is not in pending approval status'
+            });
+        }
+
+        if (status === 'Accepted') {
+            // Accept the bid
+            bid.status = 'Accepted';
+            bid.acceptedAt = new Date();
+            bid.rejectionReason = '';
+            await bid.save();
+
+            // Update load status
+            const load = await Load.findById(bid.load._id);
+            load.status = 'Assigned';
+            load.assignedTo = bid.carrier;
+            load.acceptedBid = bid._id;
+            
+            if (shipmentNumber) load.shipmentNumber = shipmentNumber;
+            if (origin) {
+                if (origin.addressLine1 !== undefined) load.origin.addressLine1 = origin.addressLine1;
+                if (origin.addressLine2 !== undefined) load.origin.addressLine2 = origin.addressLine2;
+            }
+            if (destination) {
+                if (destination.addressLine1 !== undefined) load.destination.addressLine1 = destination.addressLine1;
+                if (destination.addressLine2 !== undefined) load.destination.addressLine2 = destination.addressLine2;
+            }
+            await load.save();
+
+            // Reject all other bids for this load
+            await Bid.updateMany(
+                { load: bid.load._id, _id: { $ne: bid._id } },
+                {
+                    status: 'Rejected',
+                    rejectionReason: 'Another bid was accepted',
+                    rejectedAt: new Date()
+                }
+            );
+
+            // 🔥 NEW: Enhanced notifications
+            try {
+                // Notify trucker about bid acceptance
+                if (bid.carrier && bid.carrier.email) {
+                    const truckerSubject = `🎉 Your Bid Has Been Accepted! - ${load.origin.city} to ${load.destination.city}`;
+                    const truckerHtml = `
+                        <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                          <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                            <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">🎉 Bid Accepted!</h1>
+                            <div style="background: #27ae60; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                              <h2 style="margin: 0; font-size: 20px;">Congratulations!</h2>
+                            </div>
+                            
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                              <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Load Details</h3>
+                              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                                <div>
+                                  <strong style="color: #34495e;">📍 Route:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.origin.city} → ${load.destination.city}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">💰 Accepted Rate:</strong><br>
+                                  <span style="color: #7f8c8d;">$${bid.rate}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">📦 Commodity:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.commodity}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">⚖️ Weight:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.weight} kg</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">📅 Pickup Date:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.pickupDate ? new Date(load.pickupDate).toLocaleDateString() : 'TBD'}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">📅 Delivery Date:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.deliveryDate ? new Date(load.deliveryDate).toLocaleDateString() : 'TBD'}</span>
+                                </div>
+                                ${shipmentNumber ? `
+                                <div>
+                                  <strong style="color: #34495e;">📋 Shipment Number:</strong><br>
+                                  <span style="color: #7f8c8d;">${shipmentNumber}</span>
+                                </div>
+                                ` : ''}
+                              </div>
+                            </div>
+                            
+                            <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                              <p style="margin: 0; color: #27ae60; font-weight: bold;">✅ Status: Bid Accepted</p>
+                            </div>
+                            
+                            <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                              Login to your VPL account to view the complete load details and start the delivery process!
+                            </p>
+                          </div>
+                        </div>
+                    `;
+
+                    await sendEmail({
+                        to: bid.carrier.email,
+                        subject: truckerSubject,
+                        html: truckerHtml
+                    });
+                }
+
+                // Notify shipper about bid acceptance
+                if (load.shipper && load.shipper.email) {
+                    const shipperSubject = `Bid Accepted - ${load.origin.city} to ${load.destination.city}`;
+                    const shipperHtml = `
+                        <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                          <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                            <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">✅ Bid Accepted</h1>
+                            <div style="background: #27ae60; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                              <h2 style="margin: 0; font-size: 20px;">Load Assigned Successfully</h2>
+                            </div>
+                            
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                              <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Assignment Details</h3>
+                              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                                <div>
+                                  <strong style="color: #34495e;">📍 Route:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.origin.city} → ${load.destination.city}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">🚛 Assigned To:</strong><br>
+                                  <span style="color: #7f8c8d;">${bid.carrier.compName}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">💰 Accepted Rate:</strong><br>
+                                  <span style="color: #7f8c8d;">$${bid.rate}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">👤 Approved By:</strong><br>
+                                  <span style="color: #7f8c8d;">${req.user.employeeName} (Sales)</span>
+                                </div>
+                                ${shipmentNumber ? `
+                                <div>
+                                  <strong style="color: #34495e;">📋 Shipment Number:</strong><br>
+                                  <span style="color: #7f8c8d;">${shipmentNumber}</span>
+                                </div>
+                                ` : ''}
+                              </div>
+                            </div>
+                            
+                            <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                              <p style="margin: 0; color: #27ae60; font-weight: bold;">✅ Status: Load Assigned</p>
+                            </div>
+                            
+                            <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                              Your load has been successfully assigned. You can now create a DO (Delivery Order) for this shipment.
+                            </p>
+                          </div>
+                        </div>
+                    `;
+
+                    await sendEmail({
+                        to: load.shipper.email,
+                        subject: shipperSubject,
+                        html: shipperHtml
+                    });
+                }
+
+                console.log(`📧 Bid acceptance notifications sent to trucker and shipper`);
+            } catch (emailError) {
+                console.error('❌ Error sending bid acceptance notifications:', emailError);
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Bid accepted successfully',
+                bid,
+                load
+            });
+
+        } else if (status === 'Rejected') {
+            // Reject the bid
+            bid.status = 'Rejected';
+            bid.rejectedAt = new Date();
+            bid.rejectionReason = reason || 'Bid rejected by Sales team';
+            await bid.save();
+
+            // 🔥 NEW: Notify trucker about bid rejection
+            try {
+                if (bid.carrier && bid.carrier.email) {
+                    const truckerSubject = `Bid Status Update - ${load.origin.city} to ${load.destination.city}`;
+                    const truckerHtml = `
+                        <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                          <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                            <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">📋 Bid Status Update</h1>
+                            <div style="background: #e74c3c; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                              <h2 style="margin: 0; font-size: 20px;">Bid Not Accepted</h2>
+                            </div>
+                            
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                              <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Load Details</h3>
+                              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                                <div>
+                                  <strong style="color: #34495e;">📍 Route:</strong><br>
+                                  <span style="color: #7f8c8d;">${load.origin.city} → ${load.destination.city}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">💰 Your Bid:</strong><br>
+                                  <span style="color: #7f8c8d;">$${bid.rate}</span>
+                                </div>
+                                <div>
+                                  <strong style="color: #34495e;">📝 Reason:</strong><br>
+                                  <span style="color: #7f8c8d;">${bid.rejectionReason}</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                              <p style="margin: 0; color: #856404; font-weight: bold;">💡 Don't worry! Keep bidding on other loads</p>
+                            </div>
+                            
+                            <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                              Thank you for your interest. Please continue to bid on other available loads!
+                            </p>
+                          </div>
+                        </div>
+                    `;
+
+                    await sendEmail({
+                        to: bid.carrier.email,
+                        subject: truckerSubject,
+                        html: truckerHtml
+                    });
+                }
+                console.log(`📧 Bid rejection notification sent to trucker`);
+            } catch (emailError) {
+                console.error('❌ Error sending bid rejection notification:', emailError);
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Bid rejected successfully',
+                bid
+            });
+
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid status. Must be "Accepted" or "Rejected"'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Error in approveBidBySalesUser:', error);
         next(error);
     }
 };
