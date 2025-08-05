@@ -19,21 +19,42 @@ const customerSchema = new mongoose.Schema({
   },
   lineHaul: {
     type: Number,
-    required: true
+    required: true,
+    set: function(val) {
+      return Number(val) || 0;
+    }
   },
   fsc: {
     type: Number,
-    required: true
+    required: true,
+    set: function(val) {
+      return Number(val) || 0;
+    }
   },
   other: {
     type: Number,
-    required: true
+    required: true,
+    set: function(val) {
+      return Number(val) || 0;
+    }
   },
   totalAmount: {
     type: Number,
     required: true
   }
 });
+
+// Virtual for calculated total amount
+customerSchema.virtual('calculatedTotal').get(function() {
+  const lineHaul = Number(this.lineHaul) || 0;
+  const fsc = Number(this.fsc) || 0;
+  const other = Number(this.other) || 0;
+  return lineHaul + fsc + other;
+});
+
+// Include virtuals when converting to JSON
+customerSchema.set('toJSON', { virtuals: true });
+customerSchema.set('toObject', { virtuals: true });
 
 const carrierSchema = new mongoose.Schema({
   carrierName: {
@@ -185,6 +206,18 @@ const doSchema = new mongoose.Schema({
 doSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   
+  // Calculate totalAmount for each customer
+  if (this.customers && Array.isArray(this.customers)) {
+    for (const customer of this.customers) {
+      if (customer.lineHaul !== undefined && customer.fsc !== undefined && customer.other !== undefined) {
+        const lineHaul = Number(customer.lineHaul);
+        const fsc = Number(customer.fsc);
+        const other = Number(customer.other);
+        customer.totalAmount = lineHaul + fsc + other;
+      }
+    }
+  }
+  
   // Ensure totalCarrierFees is calculated correctly
   if (this.carrier && this.carrier.carrierFees && Array.isArray(this.carrier.carrierFees)) {
     let totalCarrierFees = 0;
@@ -196,6 +229,38 @@ doSchema.pre('save', function(next) {
       }
     }
     this.carrier.totalCarrierFees = totalCarrierFees;
+  }
+  
+  next();
+});
+
+// Pre-update middleware to handle totalAmount calculation
+doSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  
+  // Handle totalAmount calculation for customers in updates
+  if (update.customers && Array.isArray(update.customers)) {
+    for (const customer of update.customers) {
+      if (customer.lineHaul !== undefined && customer.fsc !== undefined && customer.other !== undefined) {
+        const lineHaul = Number(customer.lineHaul);
+        const fsc = Number(customer.fsc);
+        const other = Number(customer.other);
+        customer.totalAmount = lineHaul + fsc + other;
+      }
+    }
+  }
+  
+  // Handle carrier fees calculation in updates
+  if (update.carrier && update.carrier.carrierFees && Array.isArray(update.carrier.carrierFees)) {
+    let totalCarrierFees = 0;
+    for (const fee of update.carrier.carrierFees) {
+      if (fee.quantity && fee.amount) {
+        const quantity = Number(fee.quantity);
+        const amount = Number(fee.amount);
+        totalCarrierFees += quantity * amount;
+      }
+    }
+    update.carrier.totalCarrierFees = totalCarrierFees;
   }
   
   next();

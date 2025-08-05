@@ -153,10 +153,13 @@ export const createDO = async (req, res) => {
         });
       }
       
-      // Calculate total amount automatically
-      const calculatedTotal = customer.lineHaul + customer.fsc + customer.other;
+      // Calculate total amount automatically - ensure values are numbers
+      const lineHaul = Number(customer.lineHaul);
+      const fsc = Number(customer.fsc);
+      const other = Number(customer.other);
+      const calculatedTotal = lineHaul + fsc + other;
       customer.totalAmount = calculatedTotal;
-      console.log(`Customer ${i + 1} totalAmount calculated: ${calculatedTotal}`);
+      console.log(`Customer ${i + 1} totalAmount calculated: ${lineHaul} + ${fsc} + ${other} = ${calculatedTotal}`);
     }
     
     // Validate carrier data
@@ -322,8 +325,11 @@ export const updateDO = async (req, res) => {
           });
         }
         
-        // Calculate total amount automatically
-        const calculatedTotal = customer.lineHaul + customer.fsc + customer.other;
+        // Calculate total amount automatically - ensure values are numbers
+        const lineHaul = Number(customer.lineHaul);
+        const fsc = Number(customer.fsc);
+        const other = Number(customer.other);
+        const calculatedTotal = lineHaul + fsc + other;
         customer.totalAmount = calculatedTotal;
       }
     }
