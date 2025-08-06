@@ -17,8 +17,18 @@ const leaveSchema = new mongoose.Schema({
   // 🔹 Time slots for half-day (optional)
   halfDayStartTime: { type: String }, // Format: "09:00"
   halfDayEndTime: { type: String },   // Format: "13:00"
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  // 🔹 Updated status to include manager approval
+  status: { 
+    type: String, 
+    enum: ['pending', 'manager_approved', 'approved', 'rejected'], 
+    default: 'pending' 
+  },
   appliedAt: { type: Date, default: Date.now },
+  // 🔹 Manager approval fields
+  managerApprovedBy: { type: String }, // Manager empId
+  managerApprovedAt: { type: Date },
+  managerRemarks: { type: String },
+  // 🔹 HR approval fields
   reviewedBy: { type: String }, // HR empId
   reviewedAt: { type: Date },
   remarks: { type: String }

@@ -13,7 +13,12 @@ import {
   applyLeaveWithBalance,
   getMyLeaveBalance,
   updateLeaveBalance,
-  getCurrentMonthLeaves
+  getCurrentMonthLeaves,
+  // 🔹 New manager approval functions
+  managerApproveLeave,
+  hrFinalApproveLeave,
+  getLeavesPendingManagerApproval,
+  getLeavesPendingHRApproval
 } from '../controllers/leaveController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { isHRDepartment } from '../middlewares/isHRDepartment.js';
@@ -30,6 +35,14 @@ router.get('/emp/:empId', isAuthenticatedEmployee, isHRDepartment, getLeavesByEm
 router.get('/my', isAuthenticatedEmployee, getMyLeaves);
 router.get('/monthly-summary', isAuthenticatedEmployee, isHRDepartment, getMonthlyLeaveSummary);
 router.delete('/cancel/:id', isAuthenticatedEmployee, cancelLeave);
+
+// 🔹 Manager Approval Routes
+router.get('/pending-manager-approval', isAuthenticatedEmployee, getLeavesPendingManagerApproval);
+router.patch('/manager-approve/:id', isAuthenticatedEmployee, managerApproveLeave);
+
+// 🔹 HR Final Approval Routes
+router.get('/pending-hr-approval', isAuthenticatedEmployee, isHRDepartment, getLeavesPendingHRApproval);
+router.patch('/hr-final-approve/:id', isAuthenticatedEmployee, isHRDepartment, hrFinalApproveLeave);
 
 // 📊 Leave Balance Management
 router.get('/balance/:empId', isAuthenticatedEmployee, isHRDepartment, getLeaveBalance);
