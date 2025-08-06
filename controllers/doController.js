@@ -533,3 +533,429 @@ export const fixCarrierFees = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 }; 
+
+// 🔥 NEW: Get available CMT users for assignment
+export const getAvailableCMTUsers = async (req, res) => {
+  try {
+    // ✅ 1. Check if user is authenticated and is a sales employee
+    if (!req.user || !req.user.empId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    // ✅ 2. Check if user belongs to Sales department
+    if (req.user.department !== 'Sales') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only Sales department employees can access CMT users' 
+      });
+    }
+
+    // ✅ 3. Get all active CMT department employees
+    const { Employee } = await import('../models/inhouseUserModel.js');
+    const cmtUsers = await Employee.find({
+      department: 'CMT',
+      status: 'active'
+    }).select('empId employeeName designation email mobileNo');
+
+    // ✅ 4. Success response
+    res.status(200).json({
+      success: true,
+      message: 'Available CMT users retrieved successfully',
+      data: {
+        totalUsers: cmtUsers.length,
+        users: cmtUsers
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error getting available CMT users:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err.message
+    });
+  }
+};
+
+// 🔥 NEW: Assign delivery order to CMT user
+export const assignDOToCMT = async (req, res) => {
+  try {
+    // ✅ 1. Check if user is authenticated and is a sales employee
+    if (!req.user || !req.user.empId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    // ✅ 2. Check if user belongs to Sales department
+    if (req.user.department !== 'Sales') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only Sales department employees can assign delivery orders' 
+      });
+    }
+
+    // ✅ 3. Get DO ID and CMT user ID from request
+    const { doId, cmtUserId } = req.body;
+
+    if (!doId) {
+      return res.status(400).json({
+        success: false,
+        message: 'DO ID is required'
+      });
+    }
+
+    if (!cmtUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'CMT User ID is required'
+      });
+    }
+
+    // ✅ 4. Find the delivery order
+    const doRecord = await DO.findById(doId);
+    if (!doRecord) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery order not found'
+      });
+    }
+
+    // ✅ 5. Verify that the DO was created by this sales user (or allow admin/superadmin)
+    if (doRecord.createdBySalesUser.empId !== req.user.empId && 
+        req.user.role !== 'admin' && 
+        req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only assign delivery orders created by yourself'
+      });
+    }
+
+    // ✅ 6. Verify that the CMT user exists and is active
+    const { Employee } = await import('../models/inhouseUserModel.js');
+    const cmtUser = await Employee.findOne({
+      empId: cmtUserId,
+      department: 'CMT',
+      status: 'active'
+    });
+
+    if (!cmtUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'CMT user not found or not active'
+      });
+    }
+
+    // ✅ 7. Update the delivery order with assignment
+    doRecord.assignedToCMT = {
+      empId: cmtUser.empId,
+      employeeName: cmtUser.employeeName,
+      department: 'CMT',
+      assignedAt: new Date(),
+      assignedBy: {
+        empId: req.user.empId,
+        employeeName: req.user.employeeName,
+        department: 'Sales'
+      }
+    };
+    doRecord.assignmentStatus = 'assigned';
+
+    await doRecord.save();
+
+    // ✅ 8. Success response
+    res.status(200).json({
+      success: true,
+      message: 'Delivery order assigned to CMT user successfully',
+      data: {
+        doId: doRecord._id,
+        assignedTo: {
+          empId: cmtUser.empId,
+          employeeName: cmtUser.employeeName,
+          department: 'CMT'
+        },
+        assignedAt: doRecord.assignedToCMT.assignedAt,
+        assignedBy: {
+          empId: req.user.empId,
+          employeeName: req.user.employeeName,
+          department: 'Sales'
+        },
+        assignmentStatus: doRecord.assignmentStatus
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error assigning DO to CMT:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err.message
+    });
+  }
+};
+
+// 🔥 NEW: Get delivery orders assigned to a CMT user
+export const getDOsAssignedToCMT = async (req, res) => {
+  try {
+    // ✅ 1. Check if user is authenticated
+    if (!req.user || !req.user.empId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    // ✅ 2. Check if user belongs to CMT department
+    if (req.user.department !== 'CMT') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only CMT department employees can access assigned delivery orders' 
+      });
+    }
+
+    // ✅ 3. Get query parameters
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      sortBy = 'assignedToCMT.assignedAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // ✅ 4. Build filter to find DOs assigned to this CMT user
+    const filter = {
+      'assignedToCMT.empId': req.user.empId
+    };
+
+    // Apply additional filters
+    if (status) {
+      filter.assignmentStatus = status;
+    }
+
+    const sortOptions = {};
+    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // ✅ 5. Find DOs with populated information
+    const dos = await DO.find(filter)
+      .populate('createdBySalesUser', 'empId employeeName department')
+      .sort(sortOptions)
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .exec();
+
+    const total = await DO.countDocuments(filter);
+
+    // ✅ 6. Get statistics for this CMT user
+    const totalAssigned = await DO.countDocuments({ 'assignedToCMT.empId': req.user.empId });
+    const totalCompleted = await DO.countDocuments({ 
+      'assignedToCMT.empId': req.user.empId,
+      assignmentStatus: 'completed'
+    });
+    const totalInProgress = await DO.countDocuments({ 
+      'assignedToCMT.empId': req.user.empId,
+      assignmentStatus: 'in_progress'
+    });
+
+    // ✅ 7. Success response
+    res.status(200).json({
+      success: true,
+      message: 'Assigned delivery orders retrieved successfully',
+      data: {
+        dos,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        },
+        statistics: {
+          totalAssigned,
+          totalCompleted,
+          totalInProgress,
+          totalPending: totalAssigned - totalCompleted - totalInProgress
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error getting DOs assigned to CMT:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err.message
+    });
+  }
+};
+
+// 🔥 NEW: Update assignment status (for CMT users to mark progress)
+export const updateAssignmentStatus = async (req, res) => {
+  try {
+    // ✅ 1. Check if user is authenticated
+    if (!req.user || !req.user.empId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    // ✅ 2. Check if user belongs to CMT department
+    if (req.user.department !== 'CMT') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only CMT department employees can update assignment status' 
+      });
+    }
+
+    // ✅ 3. Get DO ID and new status from request
+    const { doId, status } = req.body;
+
+    if (!doId) {
+      return res.status(400).json({
+        success: false,
+        message: 'DO ID is required'
+      });
+    }
+
+    if (!status || !['assigned', 'in_progress', 'completed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid status is required (assigned, in_progress, completed)'
+      });
+    }
+
+    // ✅ 4. Find the delivery order
+    const doRecord = await DO.findById(doId);
+    if (!doRecord) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery order not found'
+      });
+    }
+
+    // ✅ 5. Verify that the DO is assigned to this CMT user
+    if (doRecord.assignedToCMT.empId !== req.user.empId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only update status for delivery orders assigned to you'
+      });
+    }
+
+    // ✅ 6. Update the assignment status
+    doRecord.assignmentStatus = status;
+    await doRecord.save();
+
+    // ✅ 7. Success response
+    res.status(200).json({
+      success: true,
+      message: 'Assignment status updated successfully',
+      data: {
+        doId: doRecord._id,
+        newStatus: status,
+        updatedAt: doRecord.updatedAt
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error updating assignment status:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err.message
+    });
+  }
+};
+
+// 🔥 NEW: Get delivery orders created by sales user (with assignment info)
+export const getDOsCreatedBySalesUser = async (req, res) => {
+  try {
+    // ✅ 1. Check if user is authenticated and is a sales employee
+    if (!req.user || !req.user.empId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    // ✅ 2. Check if user belongs to Sales department
+    if (req.user.department !== 'Sales') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only Sales department employees can access this data' 
+      });
+    }
+
+    // ✅ 3. Get query parameters
+    const {
+      page = 1,
+      limit = 10,
+      assignmentStatus,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // ✅ 4. Build filter to find DOs created by this sales user
+    const filter = {
+      'createdBySalesUser.empId': req.user.empId
+    };
+
+    // Apply additional filters
+    if (assignmentStatus) {
+      filter.assignmentStatus = assignmentStatus;
+    }
+
+    const sortOptions = {};
+    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // ✅ 5. Find DOs with populated assignment information
+    const dos = await DO.find(filter)
+      .populate('assignedToCMT', 'empId employeeName department')
+      .sort(sortOptions)
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .exec();
+
+    const total = await DO.countDocuments(filter);
+
+    // ✅ 6. Get statistics for this sales user
+    const totalCreated = await DO.countDocuments({ 'createdBySalesUser.empId': req.user.empId });
+    const totalAssigned = await DO.countDocuments({ 
+      'createdBySalesUser.empId': req.user.empId,
+      assignmentStatus: { $in: ['assigned', 'in_progress', 'completed'] }
+    });
+    const totalUnassigned = await DO.countDocuments({ 
+      'createdBySalesUser.empId': req.user.empId,
+      assignmentStatus: 'unassigned'
+    });
+
+    // ✅ 7. Success response
+    res.status(200).json({
+      success: true,
+      message: 'Delivery orders created by sales user retrieved successfully',
+      data: {
+        dos,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        },
+        statistics: {
+          totalCreated,
+          totalAssigned,
+          totalUnassigned
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error getting DOs created by sales user:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err.message
+    });
+  }
+}; 

@@ -168,6 +168,45 @@ const doSchema = new mongoose.Schema({
       default: 'Sales'
     }
   },
+  // 🔥 NEW: Assignment to CMT user
+  assignedToCMT: {
+    empId: {
+      type: String,
+      required: false
+    },
+    employeeName: {
+      type: String,
+      required: false
+    },
+    department: {
+      type: String,
+      default: 'CMT'
+    },
+    assignedAt: {
+      type: Date,
+      default: null
+    },
+    assignedBy: {
+      empId: {
+        type: String,
+        required: false
+      },
+      employeeName: {
+        type: String,
+        required: false
+      },
+      department: {
+        type: String,
+        default: 'Sales'
+      }
+    }
+  },
+  // 🔥 NEW: Assignment status
+  assignmentStatus: {
+    type: String,
+    enum: ['unassigned', 'assigned', 'in_progress', 'completed'],
+    default: 'unassigned'
+  },
   remarks: {
     type: String
   },
