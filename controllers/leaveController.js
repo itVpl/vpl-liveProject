@@ -143,242 +143,24 @@ export const applyLeave = async (req, res) => {
   }
 };
 
-// 🔹 Approve/Reject Leave (HR - Only for manager_approved leaves)
+// 🔹 Approve/Reject Leave
 export const updateLeaveStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, reviewedBy, remarks } = req.body;
 
-    // Validate that user is HR department
-    if (req.user.department !== 'HR') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Only HR department can approve/reject leaves' 
-      });
-    }
-
-    const leave = await LeaveRequest.findById(id);
-    if (!leave) {
-      return res.status(404).json({ success: false, message: 'Leave not found' });
-    }
-
-    // 🔹 IMPORTANT: HR can only approve/reject leaves that are manager_approved
-    if (leave.status !== 'manager_approved') {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Leave status is ${leave.status}. HR can only approve/reject leaves that have been approved by manager first.` 
-      });
-    }
-
-    const updatedLeave = await LeaveRequest.findByIdAndUpdate(id, {
+    const leave = await LeaveRequest.findByIdAndUpdate(id, {
       status,
       reviewedBy,
       reviewedAt: new Date(),
       remarks
     }, { new: true });
 
-    res.status(200).json({ 
-      success: true, 
-      leave: updatedLeave,
-      message: status === 'approved' 
-        ? 'Leave finally approved by HR'
-        : 'Leave rejected by HR'
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// 🔹 Manager Approval for Leave
-export const managerApproveLeave = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, managerRemarks } = req.body;
-    const managerEmpId = req.user.empId;
-    const managerName = req.user.employeeName;
-
-    // Validate that user is an employee (manager)
-    if (req.user.role !== 'employee') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Only employees can approve leaves as managers' 
-      });
-    }
-
-    const leave = await LeaveRequest.findById(id);
     if (!leave) {
       return res.status(404).json({ success: false, message: 'Leave not found' });
     }
 
-    // Check if leave is in pending status
-    if (leave.status !== 'pending') {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Leave is already ${leave.status}. Cannot approve.` 
-      });
-    }
-
-    // Update leave with manager approval
-    const updatedLeave = await LeaveRequest.findByIdAndUpdate(id, {
-      status: status === 'approved' ? 'manager_approved' : 'rejected',
-      managerApprovedBy: managerEmpId,
-      managerApprovedAt: new Date(),
-      managerRemarks,
-      // If manager rejects, also set HR fields
-      ...(status === 'rejected' && {
-        reviewedBy: managerEmpId,
-        reviewedAt: new Date(),
-        remarks: managerRemarks
-      })
-    }, { new: true });
-
-    res.status(200).json({ 
-      success: true, 
-      leave: updatedLeave,
-      message: status === 'approved' 
-        ? 'Leave approved by manager and sent to HR for final approval'
-        : 'Leave rejected by manager'
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// 🔹 HR Final Approval (only for manager_approved leaves)
-export const hrFinalApproveLeave = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, remarks } = req.body;
-    const hrEmpId = req.user.empId;
-
-    // Validate that user is HR department
-    if (req.user.department !== 'HR') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Only HR department can give final approval' 
-      });
-    }
-
-    const leave = await LeaveRequest.findById(id);
-    if (!leave) {
-      return res.status(404).json({ success: false, message: 'Leave not found' });
-    }
-
-    // Check if leave is in manager_approved status
-    if (leave.status !== 'manager_approved') {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Leave status is ${leave.status}. Only manager approved leaves can be finalized by HR.` 
-      });
-    }
-
-    // Update leave with HR final approval
-    const updatedLeave = await LeaveRequest.findByIdAndUpdate(id, {
-      status: status === 'approved' ? 'approved' : 'rejected',
-      reviewedBy: hrEmpId,
-      reviewedAt: new Date(),
-      remarks
-    }, { new: true });
-
-    res.status(200).json({ 
-      success: true, 
-      leave: updatedLeave,
-      message: status === 'approved' 
-        ? 'Leave finally approved by HR'
-        : 'Leave rejected by HR'
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// 🔹 Get leaves pending manager approval
-export const getLeavesPendingManagerApproval = async (req, res) => {
-  try {
-    const leaves = await LeaveRequest.aggregate([
-      {
-        $match: {
-          status: 'pending'
-        }
-      },
-      {
-        $lookup: {
-          from: 'employees',
-          localField: 'empId',
-          foreignField: 'empId',
-          as: 'employee'
-        }
-      },
-      {
-        $unwind: {
-          path: '$employee',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $addFields: {
-          empName: '$employee.employeeName',
-          department: '$employee.department',
-          designation: '$employee.designation'
-        }
-      },
-      {
-        $project: {
-          employee: 0
-        }
-      },
-      {
-        $sort: { appliedAt: -1 }
-      }
-    ]);
-    
-    res.status(200).json({ success: true, leaves });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// 🔹 Get leaves pending HR approval (manager approved)
-export const getLeavesPendingHRApproval = async (req, res) => {
-  try {
-    const leaves = await LeaveRequest.aggregate([
-      {
-        $match: {
-          status: 'manager_approved'
-        }
-      },
-      {
-        $lookup: {
-          from: 'employees',
-          localField: 'empId',
-          foreignField: 'empId',
-          as: 'employee'
-        }
-      },
-      {
-        $unwind: {
-          path: '$employee',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $addFields: {
-          empName: '$employee.employeeName',
-          department: '$employee.department',
-          designation: '$employee.designation'
-        }
-      },
-      {
-        $project: {
-          employee: 0
-        }
-      },
-      {
-        $sort: { managerApprovedAt: -1 }
-      }
-    ]);
-    
-    res.status(200).json({ success: true, leaves });
+    res.status(200).json({ success: true, leave });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
