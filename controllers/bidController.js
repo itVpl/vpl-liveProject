@@ -802,6 +802,8 @@ export const updateTrackingLocation = async (req, res, next) => {
             success: true, 
             message: 'Location updated successfully.', 
             tracking,
+            deviceInfo: deviceInfo || {},
+            tripProgress: tripProgress || {},
             locationHistoryStored: true
         });
     } catch (error) {
@@ -880,6 +882,8 @@ export const updateTrackingLocationByShipment = async (req, res, next) => {
             success: true, 
             message: 'Location updated successfully.', 
             tracking,
+            deviceInfo: deviceInfo || {},
+            tripProgress: tripProgress || {},
             locationHistoryStored: true
         });
     } catch (error) {
