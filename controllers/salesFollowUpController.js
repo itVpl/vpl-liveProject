@@ -26,7 +26,16 @@ export const createSalesFollowUp = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Please provide all required fields", 400));
   }
 
-
+  // Check if email already exists (if email is provided)
+  if (email) {
+    const existingEmail = await SalesFollowUp.findOne({ 
+      email: email.toLowerCase().trim() 
+    });
+    
+    if (existingEmail) {
+      return next(new ErrorHandler("Email already exists in sales follow-up records", 400));
+    }
+  }
 
   // Create initial follow-up entry if provided
   const initialFollowUp = followUpType && followUpNotes ? {
@@ -160,6 +169,18 @@ export const updateSalesFollowUp = catchAsyncError(async (req, res, next) => {
   const salesFollowUp = await SalesFollowUp.findById(id);
   if (!salesFollowUp) {
     return next(new ErrorHandler("Sales follow-up not found", 404));
+  }
+
+  // Check if email already exists (if email is being updated)
+  if (updateData.email) {
+    const existingEmail = await SalesFollowUp.findOne({ 
+      email: updateData.email.toLowerCase().trim(),
+      _id: { $ne: id } // Exclude current record from check
+    });
+    
+    if (existingEmail) {
+      return next(new ErrorHandler("Email already exists in sales follow-up records", 400));
+    }
   }
 
   // Update lastUpdatedBy
@@ -451,5 +472,30 @@ export const searchSalesFollowUps = catchAsyncError(async (req, res, next) => {
       totalItems: total,
       itemsPerPage: parseInt(limit)
     }
+  });
+}); 
+
+// Check if email already exists
+export const checkEmailExists = catchAsyncError(async (req, res, next) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return next(new ErrorHandler("Email parameter is required", 400));
+  }
+
+  const existingEmail = await SalesFollowUp.findOne({ 
+    email: email.toLowerCase().trim() 
+  });
+
+  res.status(200).json({
+    success: true,
+    emailExists: !!existingEmail,
+    message: existingEmail ? "Email already exists" : "Email is available",
+    data: existingEmail ? {
+      id: existingEmail._id,
+      customerName: existingEmail.customerName,
+      contactPerson: existingEmail.contactPerson,
+      createdAt: existingEmail.createdAt
+    } : null
   });
 }); 

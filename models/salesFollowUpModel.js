@@ -97,6 +97,7 @@ const followUpSchema = new mongoose.Schema({
 // Index for better query performance
 followUpSchema.index({ customerName: 1, status: 1 });
 followUpSchema.index({ callingDate: 1 });
+followUpSchema.index({ email: 1 }); // Index for email queries
 
 const SalesFollowUp = mongoose.model('SalesFollowUp', followUpSchema);
 export { SalesFollowUp }; 

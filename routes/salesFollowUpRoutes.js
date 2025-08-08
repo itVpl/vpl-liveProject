@@ -9,7 +9,8 @@ import {
   deleteSalesFollowUp,
   getMySalesFollowUps,
   getSalesFollowUpStats,
-  searchSalesFollowUps
+  searchSalesFollowUps,
+  checkEmailExists
 } from '../controllers/salesFollowUpController.js';
 import { isAuthenticatedEmployee } from '../middlewares/auth.js';
 
@@ -44,5 +45,8 @@ salesFollowUpRouter.get('/stats/overview', isAuthenticatedEmployee, getSalesFoll
 
 // Search sales follow-ups
 salesFollowUpRouter.get('/search/term', isAuthenticatedEmployee, searchSalesFollowUps);
+
+// Check if email exists
+salesFollowUpRouter.get('/check-email', isAuthenticatedEmployee, checkEmailExists);
 
 export default salesFollowUpRouter; 
