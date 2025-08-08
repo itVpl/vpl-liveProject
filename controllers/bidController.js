@@ -735,17 +735,75 @@ export const assignDriverAndVehicle = async (req, res, next) => {
 export const updateTrackingLocation = async (req, res, next) => {
     try {
         const { loadId } = req.params;
-        const { lat, lon } = req.body;
+        const { 
+            lat, 
+            lon, 
+            accuracy, 
+            speed, 
+            heading, 
+            altitude,
+            address,
+            city,
+            state,
+            country,
+            deviceInfo,
+            tripProgress,
+            notes 
+        } = req.body;
+        
         if (!lat || !lon) {
             return res.status(400).json({ success: false, message: 'Latitude and longitude are required.' });
         }
+        
         const tracking = await Tracking.findOne({ load: loadId });
         if (!tracking) {
             return res.status(404).json({ success: false, message: 'Tracking record not found for this load.' });
         }
+        
+        // Update current location in tracking
         tracking.currentLocation = { lat, lon, updatedAt: new Date() };
         await tracking.save();
-        res.status(200).json({ success: true, message: 'Location updated successfully.', tracking });
+        
+        // 🔥 NEW: Store location history
+        try {
+            const { LocationHistory } = await import('../models/locationModel.js');
+            
+            const locationHistory = new LocationHistory({
+                trackingId: tracking._id,
+                vehicleNumber: tracking.vehicleNumber || '',
+                shipmentNumber: tracking.shipmentNumber || '',
+                latitude: lat,
+                longitude: lon,
+                locationData: {
+                    accuracy: accuracy || null,
+                    altitude: altitude || null,
+                    speed: speed || null,
+                    heading: heading || null,
+                    address: address || null,
+                    city: city || null,
+                    state: state || null,
+                    country: country || null
+                },
+                deviceInfo: deviceInfo || {},
+                tripProgress: tripProgress || {},
+                notes: notes || '',
+                timestamp: new Date()
+            });
+            
+            await locationHistory.save();
+            console.log(`📍 Location history stored for tracking ${tracking._id}`);
+            
+        } catch (historyError) {
+            console.error('❌ Error storing location history:', historyError);
+            // Don't fail the main request if history storage fails
+        }
+        
+        res.status(200).json({ 
+            success: true, 
+            message: 'Location updated successfully.', 
+            tracking,
+            locationHistoryStored: true
+        });
     } catch (error) {
         next(error);
     }
@@ -755,17 +813,75 @@ export const updateTrackingLocation = async (req, res, next) => {
 export const updateTrackingLocationByShipment = async (req, res, next) => {
     try {
         const { shipmentNumber } = req.params;
-        const { lat, lon } = req.body;
+        const { 
+            lat, 
+            lon, 
+            accuracy, 
+            speed, 
+            heading, 
+            altitude,
+            address,
+            city,
+            state,
+            country,
+            deviceInfo,
+            tripProgress,
+            notes 
+        } = req.body;
+        
         if (!lat || !lon) {
             return res.status(400).json({ success: false, message: 'Latitude and longitude are required.' });
         }
+        
         const tracking = await Tracking.findOne({ shipmentNumber: shipmentNumber });
         if (!tracking) {
             return res.status(404).json({ success: false, message: 'Tracking record not found for this shipment number.' });
         }
+        
+        // Update current location in tracking
         tracking.currentLocation = { lat, lon, updatedAt: new Date() };
         await tracking.save();
-        res.status(200).json({ success: true, message: 'Location updated successfully.', tracking });
+        
+        // 🔥 NEW: Store location history
+        try {
+            const { LocationHistory } = await import('../models/locationModel.js');
+            
+            const locationHistory = new LocationHistory({
+                trackingId: tracking._id,
+                vehicleNumber: tracking.vehicleNumber || '',
+                shipmentNumber: tracking.shipmentNumber || '',
+                latitude: lat,
+                longitude: lon,
+                locationData: {
+                    accuracy: accuracy || null,
+                    altitude: altitude || null,
+                    speed: speed || null,
+                    heading: heading || null,
+                    address: address || null,
+                    city: city || null,
+                    state: state || null,
+                    country: country || null
+                },
+                deviceInfo: deviceInfo || {},
+                tripProgress: tripProgress || {},
+                notes: notes || '',
+                timestamp: new Date()
+            });
+            
+            await locationHistory.save();
+            console.log(`📍 Location history stored for shipment ${shipmentNumber}`);
+            
+        } catch (historyError) {
+            console.error('❌ Error storing location history:', historyError);
+            // Don't fail the main request if history storage fails
+        }
+        
+        res.status(200).json({ 
+            success: true, 
+            message: 'Location updated successfully.', 
+            tracking,
+            locationHistoryStored: true
+        });
     } catch (error) {
         next(error);
     }
@@ -1642,6 +1758,279 @@ export const approveBidBySalesUser = async (req, res, next) => {
 
     } catch (error) {
         console.error('❌ Error in approveBidBySalesUser:', error);
+        next(error);
+    }
+};
+
+// Get location history for a tracking
+export const getLocationHistory = async (req, res, next) => {
+    try {
+        const { trackingId } = req.params;
+        const { 
+            startDate, 
+            endDate, 
+            limit = 1000, 
+            skip = 0,
+            sort = 'desc' // 'asc' or 'desc'
+        } = req.query;
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const options = {
+            startDate,
+            endDate,
+            limit: parseInt(limit),
+            skip: parseInt(skip),
+            sort: { timestamp: sort === 'asc' ? 1 : -1 }
+        };
+        
+        const locationHistory = await LocationHistory.getLocationHistory(trackingId, options);
+        
+        res.status(200).json({
+            success: true,
+            trackingId,
+            locationHistory,
+            totalPoints: locationHistory.length,
+            filters: {
+                startDate,
+                endDate,
+                limit: options.limit,
+                skip: options.skip,
+                sort
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get location history by shipment number
+export const getLocationHistoryByShipment = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { 
+            startDate, 
+            endDate, 
+            limit = 1000, 
+            skip = 0,
+            sort = 'desc'
+        } = req.query;
+        
+        // First get tracking by shipment number
+        const tracking = await Tracking.findOne({ shipmentNumber });
+        if (!tracking) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Tracking record not found for this shipment number.' 
+            });
+        }
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const options = {
+            startDate,
+            endDate,
+            limit: parseInt(limit),
+            skip: parseInt(skip),
+            sort: { timestamp: sort === 'asc' ? 1 : -1 }
+        };
+        
+        const locationHistory = await LocationHistory.getLocationHistory(tracking._id, options);
+        
+        res.status(200).json({
+            success: true,
+            shipmentNumber,
+            trackingId: tracking._id,
+            locationHistory,
+            totalPoints: locationHistory.length,
+            filters: {
+                startDate,
+                endDate,
+                limit: options.limit,
+                skip: options.skip,
+                sort
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get location statistics for a tracking
+export const getLocationStats = async (req, res, next) => {
+    try {
+        const { trackingId } = req.params;
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const stats = await LocationHistory.getLocationStats(trackingId);
+        
+        res.status(200).json({
+            success: true,
+            trackingId,
+            stats
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get location statistics by shipment number
+export const getLocationStatsByShipment = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        // First get tracking by shipment number
+        const tracking = await Tracking.findOne({ shipmentNumber });
+        if (!tracking) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Tracking record not found for this shipment number.' 
+            });
+        }
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const stats = await LocationHistory.getLocationStats(tracking._id);
+        
+        res.status(200).json({
+            success: true,
+            shipmentNumber,
+            trackingId: tracking._id,
+            stats
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get latest location for a tracking
+export const getLatestLocation = async (req, res, next) => {
+    try {
+        const { trackingId } = req.params;
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const latestLocation = await LocationHistory.getLatestLocation(trackingId);
+        
+        if (!latestLocation) {
+            return res.status(404).json({
+                success: false,
+                message: 'No location history found for this tracking.'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            trackingId,
+            latestLocation
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get latest location by shipment number
+export const getLatestLocationByShipment = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        
+        // First get tracking by shipment number
+        const tracking = await Tracking.findOne({ shipmentNumber });
+        if (!tracking) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Tracking record not found for this shipment number.' 
+            });
+        }
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const latestLocation = await LocationHistory.getLatestLocation(tracking._id);
+        
+        if (!latestLocation) {
+            return res.status(404).json({
+                success: false,
+                message: 'No location history found for this shipment.'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            shipmentNumber,
+            trackingId: tracking._id,
+            latestLocation
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Bulk location update (for offline sync)
+export const bulkLocationUpdate = async (req, res, next) => {
+    try {
+        const { trackingId } = req.params;
+        const { locations } = req.body; // Array of location objects
+        
+        if (!locations || !Array.isArray(locations) || locations.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Locations array is required and must not be empty.'
+            });
+        }
+        
+        // Verify tracking exists
+        const tracking = await Tracking.findById(trackingId);
+        if (!tracking) {
+            return res.status(404).json({
+                success: false,
+                message: 'Tracking record not found.'
+            });
+        }
+        
+        const { LocationHistory } = await import('../models/locationModel.js');
+        
+        const locationHistoryDocs = locations.map(location => ({
+            trackingId: tracking._id,
+            vehicleNumber: tracking.vehicleNumber || '',
+            shipmentNumber: tracking.shipmentNumber || '',
+            latitude: location.lat || location.latitude,
+            longitude: location.lon || location.longitude,
+            locationData: {
+                accuracy: location.accuracy || null,
+                altitude: location.altitude || null,
+                speed: location.speed || null,
+                heading: location.heading || null,
+                address: location.address || null,
+                city: location.city || null,
+                state: location.state || null,
+                country: location.country || null
+            },
+            deviceInfo: location.deviceInfo || {},
+            tripProgress: location.tripProgress || {},
+            notes: location.notes || '',
+            timestamp: location.timestamp ? new Date(location.timestamp) : new Date()
+        }));
+        
+        const savedLocations = await LocationHistory.insertMany(locationHistoryDocs);
+        
+        // Update current location to the latest one
+        const latestLocation = locations[locations.length - 1];
+        tracking.currentLocation = { 
+            lat: latestLocation.lat || latestLocation.latitude, 
+            lon: latestLocation.lon || latestLocation.longitude, 
+            updatedAt: new Date() 
+        };
+        await tracking.save();
+        
+        res.status(200).json({
+            success: true,
+            message: 'Bulk location update completed successfully.',
+            trackingId,
+            locationsStored: savedLocations.length,
+            latestLocation: tracking.currentLocation
+        });
+    } catch (error) {
         next(error);
     }
 };

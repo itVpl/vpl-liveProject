@@ -6,6 +6,8 @@ import { sendEmail } from '../utils/sendEmail.js';
 import Tracking from '../models/Tracking.js';
 
 // ✅ Shipper creates a new load
+
+
 export const createLoad = async (req, res, next) => {
     try {
         const {
@@ -29,8 +31,17 @@ export const createLoad = async (req, res, next) => {
             return res.status(401).json({ success: false, message: 'User not authenticated or shipper ID missing.' });
         }
 
+        // ✅ Get the shipper's information to find which inhouse user added them
+        const shipper = await ShipperDriver.findById(req.user._id);
+        
         const newLoad = new Load({
             shipper: req.user._id, // Always set shipper
+            // ✅ Add inhouse user information if shipper was added by an inhouse user
+            customerAddedBy: shipper.addedBy ? {
+                empId: shipper.addedBy.empId,
+                empName: shipper.addedBy.employeeName,
+                department: shipper.addedBy.department
+            } : null,
             origin: {
                 city: fromCity,
                 state: fromState,
@@ -2107,8 +2118,9 @@ export const createLoadBySalesUser = async (req, res, next) => {
 
         await newLoad.save();
 
-        // ✅ 7. Send email notification to all approved truckers (same as shipper API)
+        // ✅ 7. Enhanced load distribution notifications
         try {
+            // Send to truckers
             const truckers = await ShipperDriver.find({ userType: 'trucker', status: 'approved' }, 'email compName');
             const subject = `New Load Posted - ${shipper.compName}`;
             const html = `
@@ -2175,10 +2187,6 @@ export const createLoadBySalesUser = async (req, res, next) => {
                       <p style="margin: 0; color: #27ae60; font-weight: bold;">💡 Ready to place your bid?</p>
                     </div>
                     
-                    // <a href="https://vpl.com/load-board" style="background: linear-gradient(45deg, #667eea, #764ba2); color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; display: inline-block; font-weight: bold; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                    //   🚀 View Load Board
-                    // </a>
-                    
                     <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
                       Login to your VPL account to place your bid and win this load!
                     </p>
@@ -2194,6 +2202,75 @@ export const createLoadBySalesUser = async (req, res, next) => {
                 });
             }
             console.log(`📧 Notification sent to ${truckers.length} truckers.`);
+
+            // 🔥 NEW: Send notification to CMT users for bidding assistance
+            const { Employee } = await import('../models/inhouseUserModel.js');
+            const cmtUsers = await Employee.find({ 
+                department: 'CMT', 
+                status: 'active' 
+            }, 'email employeeName');
+
+            if (cmtUsers.length > 0) {
+                const cmtSubject = `New Load Available for Bidding Assistance - ${shipper.compName}`;
+                const cmtHtml = `
+                    <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                      <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                        <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">🎯 New Load for Bidding Assistance</h1>
+                        <div style="background: #e74c3c; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                          <h2 style="margin: 0; font-size: 20px;">CMT Team Notification</h2>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                          <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Load Details</h3>
+                          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                            <div>
+                              <strong style="color: #34495e;">🏢 Shipper:</strong><br>
+                              <span style="color: #7f8c8d;">${shipper.compName}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">👤 Created By:</strong><br>
+                              <span style="color: #7f8c8d;">${req.user.employeeName} (Sales)</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">📍 Origin:</strong><br>
+                              <span style="color: #7f8c8d;">${fromCity}, ${fromState}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">🎯 Destination:</strong><br>
+                              <span style="color: #7f8c8d;">${toCity}, ${toState}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">📦 Commodity:</strong><br>
+                              <span style="color: #7f8c8d;">${commodity}</span>
+                            </div>
+                            <div>
+                              <strong style="color: #34495e;">💰 Rate:</strong><br>
+                              <span style="color: #7f8c8d;">$${rate} (${rateType})</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                          <p style="margin: 0; color: #856404; font-weight: bold;">💡 Action Required: Assist truckers with bidding on this load</p>
+                        </div>
+                        
+                        <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                          Login to your VPL account to monitor and assist with bidding!
+                        </p>
+                      </div>
+                    </div>
+                `;
+
+                for (const cmtUser of cmtUsers) {
+                    await sendEmail({
+                        to: cmtUser.email,
+                        subject: cmtSubject,
+                        html: cmtHtml
+                    });
+                }
+                console.log(`📧 CMT notification sent to ${cmtUsers.length} CMT users.`);
+            }
+
         } catch (emailError) {
             console.error('❌ Error sending email notifications:', emailError);
         }
@@ -2653,6 +2730,150 @@ export const getInhouseUserCreatedLoads = async (req, res, next) => {
     } catch (error) {
         console.error('❌ Error in getInhouseUserCreatedLoads:', error);
         next(error);
+    }
+};
+
+// 🔥 NEW: Get loads for inhouse users based on their customers
+export const getInhouseUserCustomerLoads = async (req, res, next) => {
+    try {
+        // ✅ 1. Check if user is authenticated and is an inhouse user
+        if (!req.user || !req.user.empId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        // ✅ 2. Check if user is an inhouse user
+        if (!['superadmin', 'admin', 'employee'].includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only inhouse users can access this endpoint'
+            });
+        }
+
+        const {
+            page = 1,
+            limit = 10,
+            status,
+            loadType,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // ✅ 3. Build filter to find loads created by customers of this inhouse user
+        const filter = {
+            'customerAddedBy.empId': req.user.empId
+        };
+
+        // Apply additional filters
+        if (status) {
+            filter.status = status;
+        }
+        if (loadType) {
+            filter.loadType = loadType;
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // ✅ 4. Find loads with populated information
+        const loads = await Load.find(filter)
+            .populate('shipper', 'compName mc_dot_no city state email phoneNo')
+            .populate('assignedTo', 'compName mc_dot_no city state')
+            .populate('acceptedBid')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Load.countDocuments(filter);
+
+        // ✅ 5. Get statistics for this inhouse user's customers
+        const totalLoads = await Load.countDocuments({ 'customerAddedBy.empId': req.user.empId });
+        const postedLoads = await Load.countDocuments({ 
+            'customerAddedBy.empId': req.user.empId, 
+            status: 'Posted' 
+        });
+        const biddingLoads = await Load.countDocuments({ 
+            'customerAddedBy.empId': req.user.empId, 
+            status: 'Bidding' 
+        });
+        const assignedLoads = await Load.countDocuments({ 
+            'customerAddedBy.empId': req.user.empId, 
+            status: 'Assigned' 
+        });
+        const deliveredLoads = await Load.countDocuments({ 
+            'customerAddedBy.empId': req.user.empId, 
+            status: 'Delivered' 
+        });
+
+        // ✅ 6. Get customer information
+        const customers = await ShipperDriver.find({ 
+            'addedBy.empId': req.user.empId,
+            userType: 'shipper'
+        }).select('compName email phoneNo status');
+
+        // ✅ 7. Success response
+        res.status(200).json({
+            success: true,
+            message: `Loads created by customers of ${req.user.employeeName}`,
+            inhouseUser: {
+                empId: req.user.empId,
+                employeeName: req.user.employeeName,
+                department: req.user.department
+            },
+            statistics: {
+                totalLoads,
+                postedLoads,
+                biddingLoads,
+                assignedLoads,
+                deliveredLoads
+            },
+            customers: {
+                totalCustomers: customers.length,
+                activeCustomers: customers.filter(c => c.status === 'approved').length,
+                customerList: customers.map(c => ({
+                    compName: c.compName,
+                    email: c.email,
+                    phoneNo: c.phoneNo,
+                    status: c.status
+                }))
+            },
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / limit),
+                totalItems: total,
+                itemsPerPage: parseInt(limit)
+            },
+            loads: loads.map(load => ({
+                _id: load._id,
+                shipper: load.shipper,
+                origin: load.origin,
+                destination: load.destination,
+                weight: load.weight,
+                commodity: load.commodity,
+                vehicleType: load.vehicleType,
+                pickupDate: load.pickupDate,
+                deliveryDate: load.deliveryDate,
+                rate: load.rate,
+                rateType: load.rateType,
+                status: load.status,
+                loadType: load.loadType,
+                assignedTo: load.assignedTo,
+                acceptedBid: load.acceptedBid,
+                createdAt: load.createdAt,
+                customerAddedBy: load.customerAddedBy
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Error in getInhouseUserCustomerLoads:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
     }
 };
 

@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import PDFTable from 'pdfkit-table';
 
-// ✅ Get load board dashboard data
+// ✅ Get load board dashboard data with enhanced inhouse user support
 export const getLoadBoardDashboard = async (req, res, next) => {
     try {
         const {
@@ -20,10 +20,30 @@ export const getLoadBoardDashboard = async (req, res, next) => {
             minRate,
             maxRate,
             sortBy = 'createdAt',
-            sortOrder = 'desc'
+            sortOrder = 'desc',
+            userType = 'public', // 'public', 'sales', 'cmt', 'shipper', 'trucker'
+            userId = null
         } = req.query;
 
         const filter = { status: { $in: ['Posted', 'Bidding'] } };
+
+        // 🔥 NEW: Enhanced filtering for inhouse users
+        if (userType === 'sales' && userId) {
+            // Sales users can see loads they created + all loads
+            filter.$or = [
+                { 'createdBySalesUser.empId': userId },
+                { status: { $in: ['Posted', 'Bidding'] } }
+            ];
+        } else if (userType === 'cmt') {
+            // CMT users can see all loads for bidding assistance
+            // No additional filter needed
+        } else if (userType === 'shipper' && userId) {
+            // Shippers can only see their own loads
+            filter.shipper = userId;
+        } else if (userType === 'trucker' && userId) {
+            // Truckers can see all available loads
+            // No additional filter needed
+        }
 
         // Apply filters
         if (originCity) {
@@ -58,13 +78,31 @@ export const getLoadBoardDashboard = async (req, res, next) => {
 
         const total = await Load.countDocuments(filter);
 
-        // Get statistics
-        const totalLoads = await Load.countDocuments();
-        const postedLoads = await Load.countDocuments({ status: 'Posted' });
-        const biddingLoads = await Load.countDocuments({ status: 'Bidding' });
-        const assignedLoads = await Load.countDocuments({ status: 'Assigned' });
-        const totalBids = await Bid.countDocuments();
-        const pendingBids = await Bid.countDocuments({ status: 'Pending' });
+        // 🔥 NEW: Enhanced statistics for inhouse users
+        let totalLoads, postedLoads, biddingLoads, assignedLoads, totalBids, pendingBids;
+        
+        if (userType === 'sales' && userId) {
+            // Sales user specific stats
+            totalLoads = await Load.countDocuments({ 'createdBySalesUser.empId': userId });
+            postedLoads = await Load.countDocuments({ 'createdBySalesUser.empId': userId, status: 'Posted' });
+            biddingLoads = await Load.countDocuments({ 'createdBySalesUser.empId': userId, status: 'Bidding' });
+            assignedLoads = await Load.countDocuments({ 'createdBySalesUser.empId': userId, status: 'Assigned' });
+        } else if (userType === 'cmt') {
+            // CMT user specific stats
+            totalLoads = await Load.countDocuments();
+            postedLoads = await Load.countDocuments({ status: 'Posted' });
+            biddingLoads = await Load.countDocuments({ status: 'Bidding' });
+            assignedLoads = await Load.countDocuments({ status: 'Assigned' });
+        } else {
+            // General stats
+            totalLoads = await Load.countDocuments();
+            postedLoads = await Load.countDocuments({ status: 'Posted' });
+            biddingLoads = await Load.countDocuments({ status: 'Bidding' });
+            assignedLoads = await Load.countDocuments({ status: 'Assigned' });
+        }
+        
+        totalBids = await Bid.countDocuments();
+        pendingBids = await Bid.countDocuments({ status: 'Pending' });
 
         // Get top shippers
         const topShippers = await Load.aggregate([
@@ -98,7 +136,8 @@ export const getLoadBoardDashboard = async (req, res, next) => {
             { $limit: 5 }
         ]);
 
-        res.status(200).json({
+        // 🔥 NEW: Enhanced response with inhouse user specific data
+        const response = {
             success: true,
             loads,
             pagination: {
@@ -116,8 +155,124 @@ export const getLoadBoardDashboard = async (req, res, next) => {
             },
             topShippers,
             popularRoutes,
-        });
+        };
+
+        // 🔥 NEW: Add inhouse user specific information
+        if (userType === 'sales' || userType === 'cmt') {
+            response.inhouseUserInfo = {
+                userType,
+                canCreateLoads: userType === 'sales',
+                canPlaceBids: userType === 'cmt',
+                canMonitorBidding: true,
+                canAcceptBids: userType === 'sales'
+            };
+        }
+
+        res.status(200).json(response);
     } catch (error) {
+        next(error);
+    }
+};
+
+// 🔥 NEW: Inhouse User Dashboard - Enhanced view for Sales and CMT users
+export const getInhouseUserDashboard = async (req, res, next) => {
+    try {
+        const { userType, userId } = req.query;
+        
+        if (!userType || !['sales', 'cmt'].includes(userType)) {
+            return res.status(400).json({
+                success: false,
+                message: 'userType must be either "sales" or "cmt"'
+            });
+        }
+
+        // Get loads based on user type
+        let loadFilter = {};
+        let loadStats = {};
+
+        if (userType === 'sales') {
+            // Sales users see loads they created + customer loads
+            loadFilter = {
+                $or: [
+                    { 'createdBySalesUser.empId': userId },
+                    { 'customerAddedBy.empId': userId }
+                ]
+            };
+            
+            loadStats = {
+                createdByMe: await Load.countDocuments({ 'createdBySalesUser.empId': userId }),
+                customerLoads: await Load.countDocuments({ 'customerAddedBy.empId': userId }),
+                totalBids: await Bid.countDocuments({
+                    load: { $in: await Load.find(loadFilter).distinct('_id') }
+                }),
+                pendingBids: await Bid.countDocuments({
+                    load: { $in: await Load.find(loadFilter).distinct('_id') },
+                    status: 'Pending'
+                })
+            };
+        } else if (userType === 'cmt') {
+            // CMT users see all loads for bidding assistance
+            loadFilter = { status: { $in: ['Posted', 'Bidding'] } };
+            
+            loadStats = {
+                availableLoads: await Load.countDocuments({ status: 'Posted' }),
+                biddingLoads: await Load.countDocuments({ status: 'Bidding' }),
+                totalBids: await Bid.countDocuments(),
+                pendingBids: await Bid.countDocuments({ status: 'Pending' })
+            };
+        }
+
+        // Get recent loads
+        const recentLoads = await Load.find(loadFilter)
+            .populate('shipper', 'compName mc_dot_no city state')
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .exec();
+
+        // Get recent bids
+        const recentBids = await Bid.find({
+            load: { $in: await Load.find(loadFilter).distinct('_id') }
+        })
+            .populate('load', 'origin destination commodity vehicleType rate')
+            .populate('trucker', 'compName mc_dot_no')
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .exec();
+
+        // Get top performing routes
+        const topRoutes = await Load.aggregate([
+            { $match: loadFilter },
+            {
+                $group: {
+                    _id: {
+                        origin: '$origin.city',
+                        destination: '$destination.city'
+                    },
+                    count: { $sum: 1 },
+                    avgRate: { $avg: '$rate' }
+                }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            userType,
+            loadStats,
+            recentLoads,
+            recentBids,
+            topRoutes,
+            permissions: {
+                canCreateLoads: userType === 'sales',
+                canPlaceBids: userType === 'cmt',
+                canMonitorBidding: true,
+                canAcceptBids: userType === 'sales'
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error in getInhouseUserDashboard:', error);
         next(error);
     }
 };

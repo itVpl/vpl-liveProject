@@ -36,10 +36,11 @@ import {
     getLoadsCreatedBySalesUser,
     getUserLoads,
     getInhouseUserCreatedLoads,
-    debugInhouseLoads
+    debugInhouseLoads,
+    getInhouseUserCustomerLoads
 } from '../controllers/loadController.js';
 import { isAuthenticatedUser, isShipper, isAuthenticatedEmployee } from '../middlewares/auth.js';
-import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid, updateTrackingLocationByShipment as updateTrackingLocationByShipmentBid } from '../controllers/bidController.js';
+import { updateTrackingLocation as updateTrackingLocationBid, updateTrackingStatus as updateTrackingStatusBid, getTrackingDetails as getTrackingDetailsBid, updateTrackingLocationByShipment as updateTrackingLocationByShipmentBid, getLocationHistory, getLocationHistoryByShipment, getLocationStats, getLocationStatsByShipment, getLatestLocation, getLatestLocationByShipment, bulkLocationUpdate } from '../controllers/bidController.js';
 import { 
     proofOfDeliveryUpload, 
     shipperTruckerUpload,
@@ -90,6 +91,9 @@ loadRouter.get('/inhouse-created', isAuthenticatedEmployee, getInhouseUserCreate
 // ✅ Debug endpoint to check loads and understand the data
 loadRouter.get('/inhouse-debug', isAuthenticatedEmployee, debugInhouseLoads);
 
+// 🔥 NEW: Get loads created by customers of inhouse users
+loadRouter.get('/inhouse-customer-loads', isAuthenticatedEmployee, getInhouseUserCustomerLoads);
+
 // Update existing loads with geocoding (admin/dev use)
 loadRouter.post('/update-geocoding', updateLoadsWithGeocoding);
 
@@ -103,6 +107,15 @@ loadRouter.get('/shipment/:shipmentNumber', getTrackingByShipmentNumber);
 
 // Tracking location update route by shipment number (MUST BE BEFORE PARAMETERIZED ROUTES)
 loadRouter.post('/shipment/:shipmentNumber/location', updateTrackingLocationByShipmentBid); // Removed authentication for testing
+
+// 🔥 NEW: Location History Routes
+loadRouter.get('/tracking/:trackingId/location-history', getLocationHistory); 
+loadRouter.get('/shipment/:shipmentNumber/location-history', getLocationHistoryByShipment); 
+loadRouter.get('/tracking/:trackingId/location-stats', getLocationStats);
+loadRouter.get('/shipment/:shipmentNumber/location-stats', getLocationStatsByShipment);
+loadRouter.get('/tracking/:trackingId/latest-location', getLatestLocation);
+loadRouter.get('/shipment/:shipmentNumber/latest-location', getLatestLocationByShipment);
+loadRouter.post('/tracking/:trackingId/bulk-location', bulkLocationUpdate);
 
 // Parameterized routes last
 loadRouter.get('/:id', getLoadDetails); // Public route for load details
@@ -133,6 +146,7 @@ loadRouter.post('/:id/approve-delivery', isAuthenticatedUser, approveDelivery);
 
 // TEMP: Create tracking record for a load (admin/dev use only)
 loadRouter.post('/:id/create-tracking', isAuthenticatedUser, createTrackingForLoad);
+
 
 
 
