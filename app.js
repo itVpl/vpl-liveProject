@@ -30,9 +30,11 @@ import payrollRouter from './routes/payrollRoutes.js';
 import analytics8x8Routes from './routes/analytics8x8Routes.js';
 import dailyTaskRoutes from './routes/dailyTaskRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
+// import individualEmailRoutes from './routes/individualEmailRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import dayTargetRoutes from './routes/dayTargetRoutes.js';
 import hrActivityRoutes from './routes/hrActivityRoutes.js';
+import salesFollowUpRoutes from './routes/salesFollowUpRoutes.js';
 import rateLimit from 'express-rate-limit';
 import doRoutes from './routes/doRoutes.js';
 
@@ -134,9 +136,11 @@ app.use('/api/v1/payroll', payrollRouter);
 app.use('/api/v1/analytics/8x8', analytics8x8Routes);
 app.use('/api/v1/dailytask', dailyTaskRoutes);
 app.use('/api/v1/email-inbox', emailInboxRoutes);
+// app.use('/api/v1/individual-email', individualEmailRoutes);
 app.use('/api/v1/meeting', meetingRoutes);
 app.use('/api/v1/daytarget', dayTargetRoutes);
 app.use('/api/v1/hr-activity', hrActivityRoutes);
+app.use('/api/v1/sales-followup', salesFollowUpRoutes);
 setInterval(checkOverdueBreaks, 60000);
 
 // Daily target automation - run every day at 9 AM
