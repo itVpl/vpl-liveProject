@@ -17,7 +17,12 @@ import {
   getBidsPendingIntermediateApproval,
   approveBidBySalesUser,
   getBidsWithIntermediateApprovalStatus,
-  getIntermediateApprovalSummary
+  getIntermediateApprovalSummary,
+  deleteLocationHistoryByShipment,
+  deleteLocationHistoryByVehicle,
+  deleteLocationHistoryByDateRange,
+  getLocationHistoryStats,
+  getPendingBidsBySalesUser
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -33,11 +38,20 @@ bidRouter.get('/stats', getBidStats);
 // Get bids pending intermediate approval
 bidRouter.get('/pending-intermediate-approval', getBidsPendingIntermediateApproval);
 
+// Get pending bids by sales user empId
+bidRouter.get('/pending-by-sales-user/:empId', getPendingBidsBySalesUser);
+
 // Get intermediate rate approval summary
 bidRouter.get('/intermediate-approval-summary', getIntermediateApprovalSummary);
 
 // Get bids with intermediate approval status
 bidRouter.get('/intermediate-approval-status', getBidsWithIntermediateApprovalStatus);
+
+// 🔥 NEW: Location History Management APIs
+bidRouter.delete('/location-history/shipment/:shipmentNumber', deleteLocationHistoryByShipment);
+bidRouter.delete('/location-history/vehicle/:vehicleNumber', deleteLocationHistoryByVehicle);
+bidRouter.delete('/location-history/date-range', deleteLocationHistoryByDateRange);
+bidRouter.get('/location-history/stats', getLocationHistoryStats);
 
 // Specific routes first (before parameterized routes)
 bidRouter.post('/place', isTrucker, placeBid); // Only truckers can place bids

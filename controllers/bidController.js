@@ -1000,7 +1000,7 @@ export const approveBidByOps = async (req, res, next) => {
 export const getBidsPendingIntermediateApproval = async (req, res, next) => {
     try {
         const bids = await Bid.find({ status: 'PendingApproval' })
-            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber')
+            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber createdBySalesUser customerAddedBy')
             .populate('carrier', 'compName mc_dot_no city state phoneNo email fleetsize')
             .sort({ createdAt: -1 });
 
@@ -2037,4 +2037,365 @@ export const bulkLocationUpdate = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+// 🔥 NEW: Delete Location History by Shipment Number
+export const deleteLocationHistoryByShipment = async (req, res, next) => {
+    try {
+        const { shipmentNumber } = req.params;
+        const { 
+            startDate, 
+            endDate,
+            confirmDelete = false 
+        } = req.query;
+
+        if (!shipmentNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Shipment number is required'
+            });
+        }
+
+        const { LocationHistory } = await import('../models/locationModel.js');
+
+        // ✅ 1. Build query based on shipment number and optional date range
+        const query = { shipmentNumber };
+
+        if (startDate || endDate) {
+            query.timestamp = {};
+            if (startDate) {
+                query.timestamp.$gte = new Date(startDate);
+            }
+            if (endDate) {
+                query.timestamp.$lte = new Date(endDate);
+            }
+        }
+
+        // ✅ 2. Get count of records to be deleted
+        const recordsToDelete = await LocationHistory.countDocuments(query);
+
+        if (recordsToDelete === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No location history records found for this shipment number',
+                shipmentNumber,
+                filters: { startDate, endDate }
+            });
+        }
+
+        // ✅ 3. If confirmDelete is false, return preview of what will be deleted
+        if (confirmDelete !== 'true') {
+            const sampleRecords = await LocationHistory.find(query)
+                .sort({ timestamp: -1 })
+                .limit(5)
+                .select('timestamp latitude longitude locationData.city locationData.state');
+
+            return res.status(200).json({
+                success: true,
+                message: 'Preview of records to be deleted. Set confirmDelete=true to proceed.',
+                shipmentNumber,
+                recordsToDelete,
+                sampleRecords,
+                filters: { startDate, endDate },
+                action: 'Add ?confirmDelete=true to the URL to proceed with deletion'
+            });
+        }
+
+        // ✅ 4. Delete the records
+        const deleteResult = await LocationHistory.deleteMany(query);
+
+        // ✅ 5. Get statistics after deletion
+        const remainingRecords = await LocationHistory.countDocuments({ shipmentNumber });
+
+        console.log(`🗑️ Deleted ${deleteResult.deletedCount} location history records for shipment ${shipmentNumber}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${deleteResult.deletedCount} location history records`,
+            shipmentNumber,
+            deletedCount: deleteResult.deletedCount,
+            remainingRecords,
+            filters: { startDate, endDate },
+            deletionTime: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ Error deleting location history:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
+// 🔥 NEW: Delete Location History by Vehicle Number
+export const deleteLocationHistoryByVehicle = async (req, res, next) => {
+    try {
+        const { vehicleNumber } = req.params;
+        const { 
+            startDate, 
+            endDate,
+            confirmDelete = false 
+        } = req.query;
+
+        if (!vehicleNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vehicle number is required'
+            });
+        }
+
+        const { LocationHistory } = await import('../models/locationModel.js');
+
+        // ✅ 1. Build query based on vehicle number and optional date range
+        const query = { vehicleNumber };
+
+        if (startDate || endDate) {
+            query.timestamp = {};
+            if (startDate) {
+                query.timestamp.$gte = new Date(startDate);
+            }
+            if (endDate) {
+                query.timestamp.$lte = new Date(endDate);
+            }
+        }
+
+        // ✅ 2. Get count of records to be deleted
+        const recordsToDelete = await LocationHistory.countDocuments(query);
+
+        if (recordsToDelete === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No location history records found for this vehicle number',
+                vehicleNumber,
+                filters: { startDate, endDate }
+            });
+        }
+
+        // ✅ 3. If confirmDelete is false, return preview of what will be deleted
+        if (confirmDelete !== 'true') {
+            const sampleRecords = await LocationHistory.find(query)
+                .sort({ timestamp: -1 })
+                .limit(5)
+                .select('timestamp latitude longitude shipmentNumber locationData.city locationData.state');
+
+            return res.status(200).json({
+                success: true,
+                message: 'Preview of records to be deleted. Set confirmDelete=true to proceed.',
+                vehicleNumber,
+                recordsToDelete,
+                sampleRecords,
+                filters: { startDate, endDate },
+                action: 'Add ?confirmDelete=true to the URL to proceed with deletion'
+            });
+        }
+
+        // ✅ 4. Delete the records
+        const deleteResult = await LocationHistory.deleteMany(query);
+
+        // ✅ 5. Get statistics after deletion
+        const remainingRecords = await LocationHistory.countDocuments({ vehicleNumber });
+
+        console.log(`🗑️ Deleted ${deleteResult.deletedCount} location history records for vehicle ${vehicleNumber}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${deleteResult.deletedCount} location history records`,
+            vehicleNumber,
+            deletedCount: deleteResult.deletedCount,
+            remainingRecords,
+            filters: { startDate, endDate },
+            deletionTime: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ Error deleting location history:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
+// 🔥 NEW: Delete Location History by Date Range
+export const deleteLocationHistoryByDateRange = async (req, res, next) => {
+    try {
+        const { startDate, endDate, confirmDelete = false } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Both startDate and endDate are required'
+            });
+        }
+
+        const { LocationHistory } = await import('../models/locationModel.js');
+
+        // ✅ 1. Build query for date range
+        const query = {
+            timestamp: {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            }
+        };
+
+        // ✅ 2. Get count of records to be deleted
+        const recordsToDelete = await LocationHistory.countDocuments(query);
+
+        if (recordsToDelete === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No location history records found for the specified date range',
+                filters: { startDate, endDate }
+            });
+        }
+
+        // ✅ 3. If confirmDelete is false, return preview of what will be deleted
+        if (confirmDelete !== 'true') {
+            const sampleRecords = await LocationHistory.find(query)
+                .sort({ timestamp: -1 })
+                .limit(5)
+                .select('timestamp latitude longitude vehicleNumber shipmentNumber locationData.city locationData.state');
+
+            return res.status(200).json({
+                success: true,
+                message: 'Preview of records to be deleted. Set confirmDelete=true to proceed.',
+                recordsToDelete,
+                sampleRecords,
+                filters: { startDate, endDate },
+                action: 'Add ?confirmDelete=true to the URL to proceed with deletion'
+            });
+        }
+
+        // ✅ 4. Delete the records
+        const deleteResult = await LocationHistory.deleteMany(query);
+
+        // ✅ 5. Get total remaining records
+        const totalRemainingRecords = await LocationHistory.countDocuments({});
+
+        console.log(`🗑️ Deleted ${deleteResult.deletedCount} location history records for date range ${startDate} to ${endDate}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${deleteResult.deletedCount} location history records`,
+            deletedCount: deleteResult.deletedCount,
+            totalRemainingRecords,
+            filters: { startDate, endDate },
+            deletionTime: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ Error deleting location history:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
+// 🔥 NEW: Get Location History Statistics
+export const getLocationHistoryStats = async (req, res, next) => {
+    try {
+        const { LocationHistory } = await import('../models/locationModel.js');
+
+        // ✅ 1. Get total records
+        const totalRecords = await LocationHistory.countDocuments({});
+
+        // ✅ 2. Get records by date ranges
+        const now = new Date();
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const last24Hours = await LocationHistory.countDocuments({
+            timestamp: { $gte: oneDayAgo }
+        });
+
+        const lastWeek = await LocationHistory.countDocuments({
+            timestamp: { $gte: oneWeekAgo }
+        });
+
+        const lastMonth = await LocationHistory.countDocuments({
+            timestamp: { $gte: oneMonthAgo }
+        });
+
+        // ✅ 3. Get unique shipment numbers
+        const uniqueShipments = await LocationHistory.distinct('shipmentNumber');
+
+        // ✅ 4. Get unique vehicle numbers
+        const uniqueVehicles = await LocationHistory.distinct('vehicleNumber');
+
+        // ✅ 5. Get oldest and newest records
+        const oldestRecord = await LocationHistory.findOne().sort({ timestamp: 1 }).select('timestamp');
+        const newestRecord = await LocationHistory.findOne().sort({ timestamp: -1 }).select('timestamp');
+
+        res.status(200).json({
+            success: true,
+            statistics: {
+                totalRecords,
+                last24Hours,
+                lastWeek,
+                lastMonth,
+                uniqueShipments: uniqueShipments.length,
+                uniqueVehicles: uniqueVehicles.length,
+                oldestRecord: oldestRecord?.timestamp,
+                newestRecord: newestRecord?.timestamp
+            },
+            sampleShipments: uniqueShipments.slice(0, 10),
+            sampleVehicles: uniqueVehicles.slice(0, 10)
+        });
+
+    } catch (error) {
+        console.error('❌ Error getting location history stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
+// ✅ Get pending bids by sales user empId
+export const getPendingBidsBySalesUser = async (req, res, next) => {
+    try {
+        const { empId } = req.params;
+
+        if (!empId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Sales user empId is required'
+            });
+        }
+
+        // Find bids with status 'PendingApproval' and populate load details
+        // Then filter by the sales user's empId in the load's createdBySalesUser field
+        const bids = await Bid.find({ status: 'PendingApproval' })
+            .populate({
+                path: 'load',
+                select: 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber createdBySalesUser customerAddedBy',
+                match: { 'createdBySalesUser.empId': empId }
+            })
+            .populate('carrier', 'compName mc_dot_no city state phoneNo email fleetsize')
+            .sort({ createdAt: -1 });
+
+        // Filter out bids where the load doesn't match the empId (due to populate match)
+        const filteredBids = bids.filter(bid => bid.load !== null);
+
+        res.status(200).json({
+            success: true,
+            message: `Pending bids for sales user ${empId} retrieved successfully`,
+            count: filteredBids.length,
+            salesUserEmpId: empId,
+            bids: filteredBids
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export {
+    // ... existing exports ...
 };
