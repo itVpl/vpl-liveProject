@@ -2508,6 +2508,206 @@ export const getIntermediateApprovalStatsByEmpId = async (req, res, next) => {
     }
 };
 
-export {
-    // ... existing exports ...
+// ✅ Get all pending bids
+export const getPendingBids = async (req, res, next) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // Find all bids with status "Pending"
+        const bids = await Bid.find({ status: 'Pending' })
+            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber status')
+            .populate('carrier', 'compName mc_dot_no city state phoneNo email')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Bid.countDocuments({ status: 'Pending' });
+
+        // Format response
+        const formattedBids = bids.map(bid => ({
+            _id: bid._id,
+            load: bid.load,
+            carrier: bid.carrier,
+            originalRate: bid.rate,
+            intermediateRate: bid.intermediateRate,
+            message: bid.message,
+            estimatedPickupDate: bid.estimatedPickupDate,
+            estimatedDeliveryDate: bid.estimatedDeliveryDate,
+            status: bid.status,
+            createdAt: bid.createdAt,
+            updatedAt: bid.updatedAt,
+            driverName: bid.driverName,
+            driverPhone: bid.driverPhone,
+            vehicleNumber: bid.vehicleNumber,
+            vehicleType: bid.vehicleType,
+            doDocument: bid.doDocument,
+            opsApproved: bid.opsApproved,
+            opsApprovedAt: bid.opsApprovedAt,
+            placedByInhouseUser: bid.placedByInhouseUser,
+            approvedByinhouseUser: bid.approvedByinhouseUser,
+            intermediateApprovedAt: bid.intermediateApprovedAt,
+            // Approval status indicators
+            approvalStatus: {
+                hasIntermediateRate: bid.intermediateRate !== null,
+                rateDifference: bid.intermediateRate ? bid.intermediateRate - bid.rate : null,
+                rateDifferencePercentage: bid.intermediateRate ? ((bid.intermediateRate - bid.rate) / bid.rate * 100).toFixed(2) : null
+            }
+        }));
+
+        res.status(200).json({
+            success: true,
+            message: 'Pending bids retrieved successfully',
+            bids: formattedBids,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalBids: total,
+            filters: {
+                status: 'Pending',
+                sortBy,
+                sortOrder
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in getPendingBids:', error);
+        next(error);
+    }
 };
+
+// ✅ Get pending bids by approvedByinhouseUser empId
+export const getPendingBidsByEmpId = async (req, res, next) => {
+    try {
+        const { empId } = req.params;
+        const {
+            page = 1,
+            limit = 10,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        if (!empId) {
+            return res.status(400).json({
+                success: false,
+                message: 'empId is required'
+            });
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // Find pending bids filtered by approvedByinhouseUser.empId
+        const bids = await Bid.find({ 
+            status: 'Pending',
+            'approvedByinhouseUser.empId': empId
+        })
+            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber status')
+            .populate('carrier', 'compName mc_dot_no city state phoneNo email')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Bid.countDocuments({ 
+            status: 'Pending',
+            'approvedByinhouseUser.empId': empId
+        });
+
+        // Format response
+        const formattedBids = bids.map(bid => ({
+            _id: bid._id,
+            load: bid.load,
+            carrier: bid.carrier,
+            originalRate: bid.rate,
+            intermediateRate: bid.intermediateRate,
+            message: bid.message,
+            estimatedPickupDate: bid.estimatedPickupDate,
+            estimatedDeliveryDate: bid.estimatedDeliveryDate,
+            status: bid.status,
+            createdAt: bid.createdAt,
+            updatedAt: bid.updatedAt,
+            driverName: bid.driverName,
+            driverPhone: bid.driverPhone,
+            vehicleNumber: bid.vehicleNumber,
+            vehicleType: bid.vehicleType,
+            doDocument: bid.doDocument,
+            opsApproved: bid.opsApproved,
+            opsApprovedAt: bid.opsApprovedAt,
+            placedByInhouseUser: bid.placedByInhouseUser,
+            approvedByinhouseUser: bid.approvedByinhouseUser,
+            intermediateApprovedAt: bid.intermediateApprovedAt,
+            // Approval status indicators
+            approvalStatus: {
+                hasIntermediateRate: bid.intermediateRate !== null,
+                rateDifference: bid.intermediateRate ? bid.intermediateRate - bid.rate : null,
+                rateDifferencePercentage: bid.intermediateRate ? ((bid.intermediateRate - bid.rate) / bid.rate * 100).toFixed(2) : null
+            }
+        }));
+
+        res.status(200).json({
+            success: true,
+            message: `Pending bids for empId ${empId} retrieved successfully`,
+            empId,
+            bids: formattedBids,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalBids: total,
+            filters: {
+                status: 'Pending',
+                empId,
+                sortBy,
+                sortOrder
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in getPendingBidsByEmpId:', error);
+        next(error);
+    }
+};
+
+// export {
+//     placeBid,
+//     updateBid,
+//     getBidsForLoad,
+//     updateBidStatus,
+//     getTruckerBids,
+//     withdrawBid,
+//     getBidStats,
+//     testUserLoads,
+//     approveBidIntermediate,
+//     approveBidIntermediateAuto,
+//     getAcceptedBidsForTrucker,
+//     assignDriverAndVehicle,
+//     updateTrackingLocation,
+//     updateTrackingLocationByShipment,
+//     updateTrackingStatus,
+//     getTrackingDetails,
+//     approveBidByOps,
+//     getBidsPendingIntermediateApproval,
+//     getIntermediateApprovalSummary,
+//     getBidsWithIntermediateApprovalStatus,
+//     placeBidByInhouseUser,
+//     approveBidBySalesUser,
+//     getLocationHistory,
+//     getLocationHistoryByShipment,
+//     getLocationStats,
+//     getLocationStatsByShipment,
+//     getLatestLocation,
+//     getLatestLocationByShipment,
+//     bulkLocationUpdate,
+//     deleteLocationHistoryByShipment,
+//     deleteLocationHistoryByVehicle,
+//     deleteLocationHistoryByDateRange,
+//     getLocationHistoryStats,
+//     getPendingBidsBySalesUser,
+//     getIntermediateApprovalStatsByEmpId,
+//     getPendingBids,
+//     getPendingBidsByEmpId
+// };
