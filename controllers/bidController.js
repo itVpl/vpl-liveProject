@@ -476,22 +476,23 @@ export const approveBidIntermediate = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Bid is not pending approval' });
         }
 
+        // Debug: Log user information
+        console.log('🔍 Debug - req.user:', req.user);
+        console.log('🔍 Debug - req.user.empId:', req.user?.empId);
+        console.log('🔍 Debug - req.user.employeeName:', req.user?.employeeName);
+        console.log('🔍 Debug - req.user.department:', req.user?.department);
+
         // Update the intermediate rate, status, and approval tracking
         bid.intermediateRate = intermediateRate;
         bid.status = 'Pending';
-        bid.intermediateApprovedBy = approvedBy || {
+        // Save user details to the bid model
+        bid.approvedByinhouseUser = {
             empId: req.user?.empId || 'Unknown',
-            empName: req.user?.empName || 'Unknown User',
-            department: req.user?.department || 'Unknown'
+            empName: req.user?.employeeName || req.user?.name || 'Unknown User',
+            dept: req.user?.department || 'Unknown'
         };
-                        // Save user details to the bid model
-                bid.approvedByinhouseUser = {
-                    empId: req.user?.empId || 'Unknown',
-                    empName: req.user?.employeeName || req.user?.name || 'Unknown User',
-                    dept: req.user?.department || 'Unknown'
-                };
-                bid.intermediateApprovedAt = new Date();
-                await bid.save();
+        bid.intermediateApprovedAt = new Date();
+        await bid.save();
 
                 res.status(200).json({
                     success: true,
@@ -516,23 +517,21 @@ export const approveBidIntermediateAuto = async (req, res, next) => {
         if (bid.status !== 'PendingApproval') {
             return res.status(400).json({ success: false, message: 'Bid is not pending approval' });
         }
+
+
+
         // Calculate 5% markup
         const markupRate = Math.round(bid.rate * 1.05);
         bid.intermediateRate = markupRate;
         bid.status = 'Pending';
-        bid.intermediateApprovedBy = approvedBy || {
+        // Save user details to the bid model
+        bid.approvedByinhouseUser = {
             empId: req.user?.empId || 'Unknown',
-            empName: req.user?.empName || 'Unknown User',
-            department: req.user?.department || 'Unknown'
+            empName: req.user?.employeeName || req.user?.name || 'Unknown User',
+            dept: req.user?.department || 'Unknown'
         };
-                        // Save user details to the bid model
-                bid.approvedByinhouseUser = {
-                    empId: req.user?.empId || 'Unknown',
-                    empName: req.user?.employeeName || req.user?.name || 'Unknown User',
-                    dept: req.user?.department || 'Unknown'
-                };
-                bid.intermediateApprovedAt = new Date();
-                await bid.save();
+        bid.intermediateApprovedAt = new Date();
+        await bid.save();
 
                 res.status(200).json({
                     success: true,
