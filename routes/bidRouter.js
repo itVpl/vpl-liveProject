@@ -22,7 +22,8 @@ import {
   deleteLocationHistoryByVehicle,
   deleteLocationHistoryByDateRange,
   getLocationHistoryStats,
-  getPendingBidsBySalesUser
+  getPendingBidsBySalesUser,
+  getIntermediateApprovalStatsByEmpId
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -40,6 +41,9 @@ bidRouter.get('/pending-intermediate-approval', getBidsPendingIntermediateApprov
 
 // Get pending bids by sales user empId
 bidRouter.get('/pending-by-sales-user/:empId', getPendingBidsBySalesUser);
+
+// Get intermediate approval statistics by empId
+bidRouter.get('/intermediate-approval-stats/:empId', getIntermediateApprovalStatsByEmpId);
 
 // Get intermediate rate approval summary
 bidRouter.get('/intermediate-approval-summary', getIntermediateApprovalSummary);

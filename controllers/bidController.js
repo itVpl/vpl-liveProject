@@ -465,7 +465,7 @@ export const testUserLoads = async (req, res, next) => {
 export const approveBidIntermediate = async (req, res, next) => {
     try {
         const { bidId } = req.params;
-        const { intermediateRate } = req.body;
+        const { intermediateRate, approvedBy } = req.body;
 
         const bid = await Bid.findById(bidId);
         if (!bid) {
@@ -476,15 +476,29 @@ export const approveBidIntermediate = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Bid is not pending approval' });
         }
 
-        // Update the intermediate rate and status
+        // Update the intermediate rate, status, and approval tracking
         bid.intermediateRate = intermediateRate;
         bid.status = 'Pending';
+        bid.intermediateApprovedBy = approvedBy || {
+            empId: req.user?.empId || 'Unknown',
+            empName: req.user?.empName || 'Unknown User',
+            department: req.user?.department || 'Unknown'
+        };
+        bid.intermediateApprovedAt = new Date();
         await bid.save();
+
+        // Get user details for response
+        const userDetails = {
+            empId: req.user?.empId || 'Unknown',
+            empName: req.user?.employeeName || req.user?.name || 'Unknown User',
+            dept: req.user?.department || 'Unknown'
+        };
 
         res.status(200).json({
             success: true,
             message: 'Bid approved and rate updated. Now visible to shipper.',
             bid,
+            approvedBy: userDetails
         });
     } catch (error) {
         next(error);
@@ -495,6 +509,8 @@ export const approveBidIntermediate = async (req, res, next) => {
 export const approveBidIntermediateAuto = async (req, res, next) => {
     try {
         const { bidId } = req.params;
+        const { approvedBy } = req.body;
+        
         const bid = await Bid.findById(bidId);
         if (!bid) {
             return res.status(404).json({ success: false, message: 'Bid not found' });
@@ -506,11 +522,25 @@ export const approveBidIntermediateAuto = async (req, res, next) => {
         const markupRate = Math.round(bid.rate * 1.05);
         bid.intermediateRate = markupRate;
         bid.status = 'Pending';
+        bid.intermediateApprovedBy = approvedBy || {
+            empId: req.user?.empId || 'Unknown',
+            empName: req.user?.empName || 'Unknown User',
+            department: req.user?.department || 'Unknown'
+        };
+        bid.intermediateApprovedAt = new Date();
         await bid.save();
+        // Get user details for response
+        const userDetails = {
+            empId: req.user?.empId || 'Unknown',
+            empName: req.user?.employeeName || req.user?.name || 'Unknown User',
+            dept: req.user?.department || 'Unknown'
+        };
+
         res.status(200).json({
             success: true,
             message: 'Bid auto-approved with 5% markup. Now visible to shipper.',
             bid,
+            approvedBy: userDetails
         });
     } catch (error) {
         next(error);
@@ -2390,6 +2420,92 @@ export const getPendingBidsBySalesUser = async (req, res, next) => {
             count: filteredBids.length,
             salesUserEmpId: empId,
             bids: filteredBids
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ✅ Get intermediate approval statistics by empId
+export const getIntermediateApprovalStatsByEmpId = async (req, res, next) => {
+    try {
+        const { empId } = req.params;
+
+        if (!empId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Employee ID is required'
+            });
+        }
+
+        // Get all bids that were approved by this empId
+        const approvedBids = await Bid.find({
+            'intermediateApprovedBy.empId': empId,
+            intermediateRate: { $ne: null }
+        })
+        .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber createdBySalesUser customerAddedBy')
+        .populate('carrier', 'compName mc_dot_no city state phoneNo email fleetsize')
+        .sort({ intermediateApprovedAt: -1 });
+
+        // Calculate statistics
+        const totalApproved = approvedBids.length;
+        const totalOriginalRate = approvedBids.reduce((sum, bid) => sum + bid.rate, 0);
+        const totalIntermediateRate = approvedBids.reduce((sum, bid) => sum + (bid.intermediateRate || 0), 0);
+        const avgOriginalRate = totalApproved > 0 ? totalOriginalRate / totalApproved : 0;
+        const avgIntermediateRate = totalApproved > 0 ? totalIntermediateRate / totalApproved : 0;
+        const totalRateIncrease = totalIntermediateRate - totalOriginalRate;
+        const avgRateIncrease = totalApproved > 0 ? totalRateIncrease / totalApproved : 0;
+        const avgRateIncreasePercentage = avgOriginalRate > 0 ? (avgRateIncrease / avgOriginalRate * 100) : 0;
+
+        // Get approval statistics by date ranges
+        const now = new Date();
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const last24Hours = approvedBids.filter(bid => 
+            bid.intermediateApprovedAt && bid.intermediateApprovedAt >= oneDayAgo
+        ).length;
+
+        const lastWeek = approvedBids.filter(bid => 
+            bid.intermediateApprovedAt && bid.intermediateApprovedAt >= oneWeekAgo
+        ).length;
+
+        const lastMonth = approvedBids.filter(bid => 
+            bid.intermediateApprovedAt && bid.intermediateApprovedAt >= oneMonthAgo
+        ).length;
+
+        // Get user details from the first approved bid (if any)
+        const userDetails = approvedBids.length > 0 ? approvedBids[0].intermediateApprovedBy : null;
+
+        res.status(200).json({
+            success: true,
+            message: `Intermediate approval statistics for ${empId} retrieved successfully`,
+            userDetails,
+            statistics: {
+                totalApproved,
+                last24Hours,
+                lastWeek,
+                lastMonth,
+                totalOriginalRate: Math.round(totalOriginalRate),
+                totalIntermediateRate: Math.round(totalIntermediateRate),
+                avgOriginalRate: Math.round(avgOriginalRate),
+                avgIntermediateRate: Math.round(avgIntermediateRate),
+                totalRateIncrease: Math.round(totalRateIncrease),
+                avgRateIncrease: Math.round(avgRateIncrease),
+                avgRateIncreasePercentage: Math.round(avgRateIncreasePercentage * 100) / 100
+            },
+            recentApprovals: approvedBids.slice(0, 10).map(bid => ({
+                bidId: bid._id,
+                load: bid.load,
+                carrier: bid.carrier,
+                originalRate: bid.rate,
+                intermediateRate: bid.intermediateRate,
+                rateIncrease: bid.intermediateRate - bid.rate,
+                rateIncreasePercentage: ((bid.intermediateRate - bid.rate) / bid.rate * 100).toFixed(2),
+                approvedAt: bid.intermediateApprovedAt,
+                status: bid.status
+            }))
         });
     } catch (error) {
         next(error);
