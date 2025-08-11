@@ -484,22 +484,20 @@ export const approveBidIntermediate = async (req, res, next) => {
             empName: req.user?.empName || 'Unknown User',
             department: req.user?.department || 'Unknown'
         };
-        bid.intermediateApprovedAt = new Date();
-        await bid.save();
+                        // Save user details to the bid model
+                bid.approvedByinhouseUser = {
+                    empId: req.user?.empId || 'Unknown',
+                    empName: req.user?.employeeName || req.user?.name || 'Unknown User',
+                    dept: req.user?.department || 'Unknown'
+                };
+                bid.intermediateApprovedAt = new Date();
+                await bid.save();
 
-        // Get user details for response
-        const userDetails = {
-            empId: req.user?.empId || 'Unknown',
-            empName: req.user?.employeeName || req.user?.name || 'Unknown User',
-            dept: req.user?.department || 'Unknown'
-        };
-
-        res.status(200).json({
-            success: true,
-            message: 'Bid approved and rate updated. Now visible to shipper.',
-            bid,
-            approvedBy: userDetails
-        });
+                res.status(200).json({
+                    success: true,
+                    message: 'Bid approved and rate updated. Now visible to shipper.',
+                    bid
+                });
     } catch (error) {
         next(error);
     }
@@ -527,21 +525,20 @@ export const approveBidIntermediateAuto = async (req, res, next) => {
             empName: req.user?.empName || 'Unknown User',
             department: req.user?.department || 'Unknown'
         };
-        bid.intermediateApprovedAt = new Date();
-        await bid.save();
-        // Get user details for response
-        const userDetails = {
-            empId: req.user?.empId || 'Unknown',
-            empName: req.user?.employeeName || req.user?.name || 'Unknown User',
-            dept: req.user?.department || 'Unknown'
-        };
+                        // Save user details to the bid model
+                bid.approvedByinhouseUser = {
+                    empId: req.user?.empId || 'Unknown',
+                    empName: req.user?.employeeName || req.user?.name || 'Unknown User',
+                    dept: req.user?.department || 'Unknown'
+                };
+                bid.intermediateApprovedAt = new Date();
+                await bid.save();
 
-        res.status(200).json({
-            success: true,
-            message: 'Bid auto-approved with 5% markup. Now visible to shipper.',
-            bid,
-            approvedBy: userDetails
-        });
+                res.status(200).json({
+                    success: true,
+                    message: 'Bid auto-approved with 5% markup. Now visible to shipper.',
+                    bid
+                });
     } catch (error) {
         next(error);
     }

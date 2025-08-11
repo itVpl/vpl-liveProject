@@ -88,6 +88,21 @@ const bidSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    approvedByinhouseUser: {
+        empId: { type: String },
+        empName: { type: String },
+        dept: { type: String }
+    },
+    // 🔥 NEW: Intermediate approval tracking
+    intermediateApprovedBy: {
+        empId: { type: String },
+        empName: { type: String },
+        department: { type: String }
+    },
+    intermediateApprovedAt: {
+        type: Date,
+        default: null,
+    },
 });
 
 // Update the updatedAt field before saving
