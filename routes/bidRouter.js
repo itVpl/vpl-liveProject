@@ -26,7 +26,8 @@ import {
   getIntermediateApprovalStatsByEmpId,
   getPendingBids,
   getPendingBidsByEmpId,
-  acceptBidByInhouseUser
+  acceptBidByInhouseUser,
+  getBidsAcceptedByInhouseUser
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker, isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -89,5 +90,8 @@ bidRouter.put('/:bidId/approve-by-sales', approveBidBySalesUser); // Sales users
 
 // ✅ NEW: Inhouse user accepts bid on behalf of shipper
 bidRouter.put('/:bidId/accept-by-inhouse', isAuthenticatedEmployee, acceptBidByInhouseUser); // Inhouse users can accept bids on behalf of shippers
+
+// ✅ NEW: Get bids accepted by inhouse users
+bidRouter.get('/accepted-by-inhouse', getBidsAcceptedByInhouseUser); // Get all bids accepted by inhouse users
 
 export default bidRouter;

@@ -2985,3 +2985,166 @@ export const acceptBidByInhouseUser = async (req, res, next) => {
         next(error);
     }
 };
+
+// ✅ NEW: Get bids accepted by inhouse users
+export const getBidsAcceptedByInhouseUser = async (req, res, next) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            empId,
+            department,
+            startDate,
+            endDate,
+            sortBy = 'acceptedAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // Build filter object
+        const filter = {
+            'acceptedByInhouseUser.empId': { $exists: true, $ne: null }
+        };
+
+        // Apply filters
+        if (empId) {
+            filter['acceptedByInhouseUser.empId'] = empId;
+        }
+        if (department) {
+            filter['acceptedByInhouseUser.dept'] = department;
+        }
+        if (startDate || endDate) {
+            filter.acceptedAt = {};
+            if (startDate) {
+                filter.acceptedAt.$gte = new Date(startDate);
+            }
+            if (endDate) {
+                filter.acceptedAt.$lte = new Date(endDate);
+            }
+        }
+
+        const sortOptions = {};
+        sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // Find bids with populated data
+        const bids = await Bid.find(filter)
+            .populate('load', 'origin destination commodity weight vehicleType pickupDate deliveryDate rate shipmentNumber status')
+            .populate('carrier', 'compName mc_dot_no city state phoneNo email')
+            .populate('load.shipper', 'compName email')
+            .sort(sortOptions)
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .exec();
+
+        const total = await Bid.countDocuments(filter);
+
+        // Get statistics
+        const stats = await Bid.aggregate([
+            { $match: filter },
+            {
+                $group: {
+                    _id: null,
+                    totalAcceptedBids: { $sum: 1 },
+                    totalAcceptedValue: { $sum: '$rate' },
+                    avgAcceptedRate: { $avg: '$rate' },
+                    uniqueEmployees: { $addToSet: '$acceptedByInhouseUser.empId' },
+                    uniqueDepartments: { $addToSet: '$acceptedByInhouseUser.dept' }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    totalAcceptedBids: 1,
+                    totalAcceptedValue: 1,
+                    avgAcceptedRate: 1,
+                    uniqueEmployeeCount: { $size: '$uniqueEmployees' },
+                    uniqueDepartmentCount: { $size: '$uniqueDepartments' }
+                }
+            }
+        ]);
+
+        // Get department-wise statistics
+        const deptStats = await Bid.aggregate([
+            { $match: filter },
+            {
+                $group: {
+                    _id: '$acceptedByInhouseUser.dept',
+                    count: { $sum: 1 },
+                    totalValue: { $sum: '$rate' },
+                    avgRate: { $avg: '$rate' }
+                }
+            },
+            { $sort: { count: -1 } }
+        ]);
+
+        // Get employee-wise statistics
+        const empStats = await Bid.aggregate([
+            { $match: filter },
+            {
+                $group: {
+                    _id: {
+                        empId: '$acceptedByInhouseUser.empId',
+                        empName: '$acceptedByInhouseUser.empName',
+                        dept: '$acceptedByInhouseUser.dept'
+                    },
+                    count: { $sum: 1 },
+                    totalValue: { $sum: '$rate' },
+                    avgRate: { $avg: '$rate' }
+                }
+            },
+            { $sort: { count: -1 } }
+        ]);
+
+        // Format response
+        const formattedBids = bids.map(bid => ({
+            _id: bid._id,
+            load: bid.load,
+            carrier: bid.carrier,
+            shipper: bid.load?.shipper,
+            originalRate: bid.rate,
+            intermediateRate: bid.intermediateRate,
+            message: bid.message,
+            estimatedPickupDate: bid.estimatedPickupDate,
+            estimatedDeliveryDate: bid.estimatedDeliveryDate,
+            status: bid.status,
+            acceptedAt: bid.acceptedAt,
+            createdAt: bid.createdAt,
+            driverName: bid.driverName,
+            driverPhone: bid.driverPhone,
+            vehicleNumber: bid.vehicleNumber,
+            vehicleType: bid.vehicleType,
+            doDocument: bid.doDocument,
+            acceptedByInhouseUser: bid.acceptedByInhouseUser,
+            // Additional calculated fields
+            rateDifference: bid.intermediateRate ? bid.intermediateRate - bid.rate : null,
+            rateDifferencePercentage: bid.intermediateRate ? ((bid.intermediateRate - bid.rate) / bid.rate * 100).toFixed(2) : null
+        }));
+
+        res.status(200).json({
+            success: true,
+            message: 'Bids accepted by inhouse users retrieved successfully',
+            bids: formattedBids,
+            totalPages: Math.ceil(total / limit),
+            currentPage: Number(page),
+            totalBids: total,
+            statistics: stats[0] || {
+                totalAcceptedBids: 0,
+                totalAcceptedValue: 0,
+                avgAcceptedRate: 0,
+                uniqueEmployeeCount: 0,
+                uniqueDepartmentCount: 0
+            },
+            departmentStats: deptStats,
+            employeeStats: empStats,
+            filters: {
+                empId: empId || 'All employees',
+                department: department || 'All departments',
+                startDate: startDate || 'No start date filter',
+                endDate: endDate || 'No end date filter'
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error in getBidsAcceptedByInhouseUser:', error);
+        next(error);
+    }
+};
+
