@@ -94,6 +94,18 @@ const bidSchema = new mongoose.Schema({
         dept: { type: String }
     },
     
+    // ✅ NEW: Track who accepted/rejected the bid by inhouse user
+    acceptedByInhouseUser: {
+        empId: { type: String },
+        empName: { type: String },
+        dept: { type: String }
+    },
+    rejectedByInhouseUser: {
+        empId: { type: String },
+        empName: { type: String },
+        dept: { type: String }
+    },
+    
     intermediateApprovedAt: {
         type: Date,
         default: null,

@@ -25,7 +25,8 @@ import {
   getPendingBidsBySalesUser,
   getIntermediateApprovalStatsByEmpId,
   getPendingBids,
-  getPendingBidsByEmpId
+  getPendingBidsByEmpId,
+  acceptBidByInhouseUser
 } from '../controllers/bidController.js';
 import { isAuthenticatedUser, isShipper, isTrucker, isAuthenticatedEmployee } from '../middlewares/auth.js';
 import { shipperTruckerUpload } from '../middlewares/upload.js';
@@ -85,5 +86,8 @@ bidRouter.post('/:bidId/assign-driver', isTrucker, assignDriverAndVehicle); // T
 bidRouter.put('/:bidId/approve', approveBidByOps); // Employee approves bid (basic, no auth) as a reference of the inhouse user
 // 🔥 NEW: Enhanced bid approval by Sales users
 bidRouter.put('/:bidId/approve-by-sales', approveBidBySalesUser); // Sales users can approve bids  for the reference of the inhouse user
+
+// ✅ NEW: Inhouse user accepts bid on behalf of shipper
+bidRouter.put('/:bidId/accept-by-inhouse', isAuthenticatedEmployee, acceptBidByInhouseUser); // Inhouse users can accept bids on behalf of shippers
 
 export default bidRouter;
