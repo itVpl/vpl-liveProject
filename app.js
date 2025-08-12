@@ -50,6 +50,7 @@ const _dirname = path.dirname(_filename);
 
 const allowedOrigins = [
     'http://localhost:5173',
+    'http://localhost:5174',
     'http://192.168.1.7:5173',
     'https://vpowersuperadmin.netlify.app',
     'https://fluffy-fenglisu-36edff.netlify.app',
