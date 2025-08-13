@@ -160,6 +160,11 @@
             color: #0c5460;
         }
 
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
         .loading {
             display: none;
             color: #3498db;
@@ -202,12 +207,15 @@
                 <li>Click "Start Recording" when you're ready</li>
             </ul>
             <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
-                <strong>💡 Tip:</strong> If camera access is denied, click the camera icon in your browser's address bar and select "Allow".
+                <strong>💡 Tip:</strong> If camera/microphone access is denied, click the camera icon in your browser's address bar and select "Allow" for both camera and microphone.
+            </div>
+            <div style="margin-top: 10px; padding: 10px; background: #e8f5e8; border-radius: 5px; border-left: 4px solid #27ae60;">
+                <strong>🎤 Audio Test:</strong> Click "Start Recording" to test both video and audio. Make sure to speak clearly during the recording.
             </div>
         </div>
 
         <div class="video-container">
-            <video id="videoElement" autoplay muted></video>
+            <video id="videoElement" autoplay></video>
             <div class="timer" id="timer">00:00</div>
             <div class="recording-indicator" id="recordingIndicator">🔴 Recording...</div>
         </div>
@@ -234,6 +242,25 @@
         const urlParams = new URLSearchParams(window.location.search);
         token = urlParams.get('token');
 
+        // Test audio access
+        async function testAudioAccess() {
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                console.log('✅ Audio access successful');
+                audioStream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (error) {
+                console.error('❌ Audio access failed:', error);
+                return false;
+            }
+        }
+
         // Initialize page
         async function initializePage() {
             if (!token) {
@@ -249,7 +276,14 @@
                     document.getElementById('candidateName').textContent = data.candidate.candidateName;
                     document.getElementById('candidateDepartment').textContent = data.candidate.department;
                     document.getElementById('candidateInfo').style.display = 'block';
-                    showStatus('Ready to start recording', 'info');
+                    
+                    // Test audio access
+                    const audioAvailable = await testAudioAccess();
+                    if (audioAvailable) {
+                        showStatus('Ready to start recording (Audio: ✅)', 'info');
+                    } else {
+                        showStatus('Ready to start recording (Audio: ⚠️ Check microphone permissions)', 'warning');
+                    }
                 } else {
                     showStatus('Invalid or expired interview link', 'error');
                 }
@@ -265,20 +299,30 @@
                 // Try different video constraints for better compatibility
                 let stream;
                 try {
-                    // First try with ideal constraints
+                    // First try with ideal constraints including audio
                     stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { 
                             width: { ideal: 1280 },
                             height: { ideal: 720 },
                             facingMode: 'user'
                         }, 
-                        audio: true 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                            sampleRate: { ideal: 44100 }
+                        }
                     });
                 } catch (videoError) {
+                    console.log('Falling back to basic constraints:', videoError);
                     // Fallback to basic constraints
                     stream = await navigator.mediaDevices.getUserMedia({ 
                         video: true, 
-                        audio: true 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
                     });
                 }
                 
@@ -296,6 +340,13 @@
                     mimeType = 'video/mp4';
                 }
                 
+                // Log audio tracks for debugging
+                const audioTracks = stream.getAudioTracks();
+                console.log('Audio tracks found:', audioTracks.length);
+                if (audioTracks.length > 0) {
+                    console.log('Audio track settings:', audioTracks[0].getSettings());
+                }
+
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: mimeType
                 });
