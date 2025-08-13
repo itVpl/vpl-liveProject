@@ -57,6 +57,7 @@ const allowedOrigins = [
     'https://vpowersuperadmin.netlify.app',
     'https://fluffy-fenglisu-36edff.netlify.app',
     'https://vpower.netlify.app',
+    'https://vpl-liveproject-1.onrender.com',
 ];
 
 
