@@ -64,6 +64,7 @@ userSchema.methods.generateVerificationCode = function () {
 userSchema.methods.generateToken = function () {
     return  jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRE,
+        algorithm: 'HS256'
     });
 }
 

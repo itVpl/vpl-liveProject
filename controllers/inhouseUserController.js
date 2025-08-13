@@ -11,6 +11,7 @@ import { sendEmail } from '../utils/sendEmail.js';
 import Meeting from '../models/Meeting.js';
 import { getUserTalkTime } from './analytics8x8Controller.js';
 import ShipperDriver from '../models/shipper_driverModel.js';
+// import { autoSetupEmailAccount } from './individualEmailController.js';
 
 // Helper function to format date
 const formatDate = (date) => {
@@ -175,6 +176,15 @@ export const createEmployee = async (req, res) => {
         console.log('S3 files that may need cleanup:', s3Files);
       }
       return res.status(500).json({ success: false, message: err.message });
+    }
+
+    // Auto setup email account for the new employee
+    try {
+      await autoSetupEmailAccount(newEmployee._id, email);
+      console.log(`📧 Auto email account setup completed for employee ${newEmployee.empId}`);
+    } catch (emailSetupError) {
+      console.error('Email setup error (non-critical):', emailSetupError);
+      // Don't fail the employee creation if email setup fails
     }
 
     res.status(201).json({
@@ -420,7 +430,7 @@ export const loginEmployee = async (req, res) => {
     const token = jwt.sign(
       { empId: employee.empId, id: employee._id },
       process.env.JWT_SECRET || 'secret',
-      { expiresIn: '7d' }
+      { expiresIn: '7d', algorithm: 'HS256' }
     );
 
     const now = new Date();
@@ -1091,11 +1101,11 @@ export const getCMTDepartmentReport = async (req, res) => {
     const nextDay = new Date(targetDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Get CMT department employees
+    // Get CMT department employees with dateOfJoining
     const cmtEmployees = await Employee.find({
       department: 'CMT',
       status: 'active'
-    }).select('empId employeeName aliasName department designation email mobileNo');
+    }).select('empId employeeName aliasName department designation email mobileNo dateOfJoining');
 
     if (cmtEmployees.length === 0) {
       return res.status(200).json({
@@ -1155,6 +1165,62 @@ export const getCMTDepartmentReport = async (req, res) => {
         statusMessage = `Both talktime (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h) and truckers (${truckerCount}/${minTruckerCount}) incomplete`;
       }
 
+      // 🔄 AUTOMATIC HALF-DAY LEAVE LOGIC
+      let automaticHalfDayApplied = false;
+      let halfDayLeaveDetails = null;
+      
+      // Check if employee is eligible for automatic half-day (45+ days from joining)
+      const daysSinceJoining = Math.floor((targetDate - new Date(employee.dateOfJoining)) / (1000 * 60 * 60 * 24));
+      const isEligibleForAutoHalfDay = daysSinceJoining >= 45;
+      
+      if (status === 'incomplete' && isEligibleForAutoHalfDay) {
+        // Check if half-day leave already exists for this date
+        const { LeaveRequest } = await import('../models/leaveModel.js');
+        const existingHalfDayLeave = await LeaveRequest.findOne({
+          empId: employee.empId,
+          fromDate: { $gte: targetDate, $lt: nextDay },
+          isHalfDay: true,
+          status: { $in: ['pending', 'approved'] }
+        });
+        
+        if (!existingHalfDayLeave) {
+          // Create automatic half-day leave
+          const halfDayLeave = await LeaveRequest.create({
+            empId: employee.empId,
+            leaveType: 'custom',
+            fromDate: targetDate,
+            toDate: targetDate,
+            reason: `Automatic half-day leave due to incomplete daily targets on ${date}. Talktime: ${talkTimeHours.toFixed(1)}h/${minTalkTimeHours}h, Truckers: ${truckerCount}/${minTruckerCount}`,
+            totalDays: 0.5,
+            isHalfDay: true,
+            halfDayType: 'second_half', // Default to second half
+            status: 'approved', // Auto-approve
+            appliedAt: new Date(),
+            managerApprovedBy: 'SYSTEM',
+            managerApprovedAt: new Date(),
+            managerRemarks: 'Automatic half-day leave applied due to incomplete targets',
+            reviewedBy: 'SYSTEM',
+            reviewedAt: new Date(),
+            remarks: 'Auto-approved by system due to target incompletion'
+          });
+          
+          automaticHalfDayApplied = true;
+          halfDayLeaveDetails = {
+            leaveId: halfDayLeave._id,
+            leaveType: 'custom',
+            isHalfDay: true,
+            halfDayType: 'second_half',
+            reason: halfDayLeave.reason,
+            appliedAt: halfDayLeave.appliedAt,
+            status: halfDayLeave.status
+          };
+          
+          console.log(`🔄 Automatic half-day leave applied for ${employee.employeeName} (${employee.empId}) on ${date} due to incomplete targets`);
+        } else {
+          console.log(`ℹ️ Half-day leave already exists for ${employee.employeeName} (${employee.empId}) on ${date}`);
+        }
+      }
+
       // Add reason field for incomplete status
       let reason = null;
       if (status === 'incomplete') {
@@ -1196,6 +1262,13 @@ export const getCMTDepartmentReport = async (req, res) => {
             remaining: Math.max(0, minTruckerCount - truckerCount)
           }
         },
+        // 🔄 Automatic half-day leave information
+        automaticHalfDayInfo: {
+          isEligible: isEligibleForAutoHalfDay,
+          daysSinceJoining: daysSinceJoining,
+          automaticHalfDayApplied: automaticHalfDayApplied,
+          halfDayLeaveDetails: halfDayLeaveDetails
+        },
         createdAt: new Date()
       };
 
@@ -1223,6 +1296,70 @@ export const getCMTDepartmentReport = async (req, res) => {
           createdAt: { $gte: targetDate, $lt: nextDay }
         });
 
+        // 🔄 AUTOMATIC HALF-DAY LEAVE LOGIC FOR ALL EMPLOYEES
+        let automaticHalfDayApplied = false;
+        let halfDayLeaveDetails = null;
+        
+        // Check if employee is eligible for automatic half-day (45+ days from joining)
+        const daysSinceJoining = Math.floor((targetDate - new Date(employee.dateOfJoining)) / (1000 * 60 * 60 * 24));
+        const isEligibleForAutoHalfDay = daysSinceJoining >= 45;
+        
+        // Calculate status for this employee
+        const minTalkTimeHours = 1.5; // 1.5 hours required
+        const minTruckerCount = 4; // 4 truckers required
+        
+        const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+        const truckerCompleted = truckerCount >= minTruckerCount;
+        const isIncomplete = !(talkTimeCompleted && truckerCompleted);
+        
+        if (isIncomplete && isEligibleForAutoHalfDay) {
+          // Check if half-day leave already exists for this date
+          const { LeaveRequest } = await import('../models/leaveModel.js');
+          const existingHalfDayLeave = await LeaveRequest.findOne({
+            empId: employee.empId,
+            fromDate: { $gte: targetDate, $lt: nextDay },
+            isHalfDay: true,
+            status: { $in: ['pending', 'approved'] }
+          });
+          
+          if (!existingHalfDayLeave) {
+            // Create automatic half-day leave
+            const halfDayLeave = await LeaveRequest.create({
+              empId: employee.empId,
+              leaveType: 'custom',
+              fromDate: targetDate,
+              toDate: targetDate,
+              reason: `Automatic half-day leave due to incomplete daily targets on ${date}. Talktime: ${talkTimeHours.toFixed(1)}h/${minTalkTimeHours}h, Truckers: ${truckerCount}/${minTruckerCount}`,
+              totalDays: 0.5,
+              isHalfDay: true,
+              halfDayType: 'second_half', // Default to second half
+              status: 'approved', // Auto-approve
+              appliedAt: new Date(),
+              managerApprovedBy: 'SYSTEM',
+              managerApprovedAt: new Date(),
+              managerRemarks: 'Automatic half-day leave applied due to incomplete targets',
+              reviewedBy: 'SYSTEM',
+              reviewedAt: new Date(),
+              remarks: 'Auto-approved by system due to target incompletion'
+            });
+            
+            automaticHalfDayApplied = true;
+            halfDayLeaveDetails = {
+              leaveId: halfDayLeave._id,
+              leaveType: 'custom',
+              isHalfDay: true,
+              halfDayType: 'second_half',
+              reason: halfDayLeave.reason,
+              appliedAt: halfDayLeave.appliedAt,
+              status: halfDayLeave.status
+            };
+            
+            console.log(`🔄 Automatic half-day leave applied for ${employee.employeeName} (${employee.empId}) on ${date} due to incomplete targets`);
+          } else {
+            console.log(`ℹ️ Half-day leave already exists for ${employee.employeeName} (${employee.empId}) on ${date}`);
+          }
+        }
+
         employeeReports.push({
           empId: employee.empId,
           employeeName: employee.employeeName,
@@ -1234,7 +1371,14 @@ export const getCMTDepartmentReport = async (req, res) => {
             minutes: callData.totalTalkTime,
             formatted: `${Math.floor(talkTimeHours)}h ${Math.round((talkTimeHours % 1) * 60)}m`
           },
-          truckerCount: truckerCount
+          truckerCount: truckerCount,
+          // 🔄 Automatic half-day leave information
+          automaticHalfDayInfo: {
+            isEligible: isEligibleForAutoHalfDay,
+            daysSinceJoining: daysSinceJoining,
+            automaticHalfDayApplied: automaticHalfDayApplied,
+            halfDayLeaveDetails: halfDayLeaveDetails
+          }
         });
       } catch (error) {
         console.error(`❌ Error getting data for ${employee.employeeName}:`, error.message);
@@ -1252,7 +1396,13 @@ export const getCMTDepartmentReport = async (req, res) => {
             error: 'Failed to fetch talktime data'
           },
           truckerCount: 0,
-          error: 'Failed to fetch data'
+          error: 'Failed to fetch data',
+          automaticHalfDayInfo: {
+            isEligible: false,
+            daysSinceJoining: 0,
+            automaticHalfDayApplied: false,
+            halfDayLeaveDetails: null
+          }
         });
       }
     }
@@ -1319,10 +1469,15 @@ export const getCMTDepartmentReport = async (req, res) => {
     const totalEmployees = employeeReports.length;
     const departmentStatus = totalEmployees > 0 ? (completedEmployees === totalEmployees ? 'completed' : 'incomplete') : 'no_employees';
 
+    // 🔄 Calculate automatic half-day leave statistics
+    const eligibleForAutoHalfDay = employeeReports.filter(emp => emp.automaticHalfDayInfo?.isEligible).length;
+    const autoHalfDayApplied = employeeReports.filter(emp => emp.automaticHalfDayInfo?.automaticHalfDayApplied).length;
+    const incompleteEmployees = totalEmployees - completedEmployees;
+
     const summary = {
       totalEmployees: employeeReports.length,
       completedEmployees: completedEmployees,
-      incompleteEmployees: totalEmployees - completedEmployees,
+      incompleteEmployees: incompleteEmployees,
       departmentStatus: departmentStatus,
       totalTalkTime: {
         hours: totalTalkTime / 60,
@@ -1335,6 +1490,13 @@ export const getCMTDepartmentReport = async (req, res) => {
         formatted: `${Math.floor(avgTalkTime / 60)}h ${Math.round((avgTalkTime % 60))}m`
       },
       totalTruckerCount: totalTruckerCount,
+      // 🔄 Automatic half-day leave summary
+      automaticHalfDaySummary: {
+        eligibleEmployees: eligibleForAutoHalfDay,
+        autoHalfDayApplied: autoHalfDayApplied,
+        autoHalfDayRate: eligibleForAutoHalfDay > 0 ? Math.round((autoHalfDayApplied / eligibleForAutoHalfDay) * 100) : 0,
+        description: `Out of ${eligibleForAutoHalfDay} eligible employees (45+ days), ${autoHalfDayApplied} had automatic half-day leaves applied`
+      },
       targets: {
         talkTime: {
           required: minTalkTimeHours,
@@ -1396,11 +1558,11 @@ export const getSalesDepartmentReport = async (req, res) => {
     const nextDay = new Date(targetDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Get Sales department employees
+    // Get Sales department employees with dateOfJoining
     const salesEmployees = await Employee.find({
       department: 'Sales',
       status: 'active'
-    }).select('empId employeeName aliasName department designation email mobileNo');
+    }).select('empId employeeName aliasName department designation email mobileNo dateOfJoining');
 
     if (salesEmployees.length === 0) {
       return res.status(200).json({
@@ -1460,6 +1622,62 @@ export const getSalesDepartmentReport = async (req, res) => {
         statusMessage = `Both talktime (${talkTimeHours.toFixed(1)}/${minTalkTimeHours}h) and delivery orders (${deliveryOrdersCount}/${minDeliveryOrders}) incomplete`;
       }
 
+      // 🔄 AUTOMATIC HALF-DAY LEAVE LOGIC FOR SALES
+      let automaticHalfDayApplied = false;
+      let halfDayLeaveDetails = null;
+      
+      // Check if employee is eligible for automatic half-day (45+ days from joining)
+      const daysSinceJoining = Math.floor((targetDate - new Date(employee.dateOfJoining)) / (1000 * 60 * 60 * 24));
+      const isEligibleForAutoHalfDay = daysSinceJoining >= 45;
+      
+      if (status === 'incomplete' && isEligibleForAutoHalfDay) {
+        // Check if half-day leave already exists for this date
+        const { LeaveRequest } = await import('../models/leaveModel.js');
+        const existingHalfDayLeave = await LeaveRequest.findOne({
+          empId: employee.empId,
+          fromDate: { $gte: targetDate, $lt: nextDay },
+          isHalfDay: true,
+          status: { $in: ['pending', 'approved'] }
+        });
+        
+        if (!existingHalfDayLeave) {
+          // Create automatic half-day leave
+          const halfDayLeave = await LeaveRequest.create({
+            empId: employee.empId,
+            leaveType: 'custom',
+            fromDate: targetDate,
+            toDate: targetDate,
+            reason: `Automatic half-day leave due to incomplete daily targets on ${date}. Talktime: ${talkTimeHours.toFixed(1)}h/${minTalkTimeHours}h, Delivery Orders: ${deliveryOrdersCount}/${minDeliveryOrders}`,
+            totalDays: 0.5,
+            isHalfDay: true,
+            halfDayType: 'second_half', // Default to second half
+            status: 'approved', // Auto-approve
+            appliedAt: new Date(),
+            managerApprovedBy: 'SYSTEM',
+            managerApprovedAt: new Date(),
+            managerRemarks: 'Automatic half-day leave applied due to incomplete targets',
+            reviewedBy: 'SYSTEM',
+            reviewedAt: new Date(),
+            remarks: 'Auto-approved by system due to target incompletion'
+          });
+          
+          automaticHalfDayApplied = true;
+          halfDayLeaveDetails = {
+            leaveId: halfDayLeave._id,
+            leaveType: 'custom',
+            isHalfDay: true,
+            halfDayType: 'second_half',
+            reason: halfDayLeave.reason,
+            appliedAt: halfDayLeave.appliedAt,
+            status: halfDayLeave.status
+          };
+          
+          console.log(`🔄 Automatic half-day leave applied for Sales employee ${employee.employeeName} (${employee.empId}) on ${date} due to incomplete targets`);
+        } else {
+          console.log(`ℹ️ Half-day leave already exists for Sales employee ${employee.employeeName} (${employee.empId}) on ${date}`);
+        }
+      }
+
       // Add reason field for incomplete status
       let reason = null;
       if (status === 'incomplete') {
@@ -1501,6 +1719,13 @@ export const getSalesDepartmentReport = async (req, res) => {
             remaining: Math.max(0, minDeliveryOrders - deliveryOrdersCount)
           }
         },
+        // 🔄 Automatic half-day leave information
+        automaticHalfDayInfo: {
+          isEligible: isEligibleForAutoHalfDay,
+          daysSinceJoining: daysSinceJoining,
+          automaticHalfDayApplied: automaticHalfDayApplied,
+          halfDayLeaveDetails: halfDayLeaveDetails
+        },
         createdAt: new Date()
       };
 
@@ -1528,6 +1753,70 @@ export const getSalesDepartmentReport = async (req, res) => {
           createdAt: { $gte: targetDate, $lt: nextDay }
         });
 
+        // 🔄 AUTOMATIC HALF-DAY LEAVE LOGIC FOR ALL SALES EMPLOYEES
+        let automaticHalfDayApplied = false;
+        let halfDayLeaveDetails = null;
+        
+        // Check if employee is eligible for automatic half-day (45+ days from joining)
+        const daysSinceJoining = Math.floor((targetDate - new Date(employee.dateOfJoining)) / (1000 * 60 * 60 * 24));
+        const isEligibleForAutoHalfDay = daysSinceJoining >= 90;
+        
+        // Calculate status for this employee
+        const minTalkTimeHours = 3; // 3 hours required
+        const minDeliveryOrders = 1; // 1 DO required
+        
+        const talkTimeCompleted = talkTimeHours >= minTalkTimeHours;
+        const deliveryOrdersCompleted = deliveryOrdersCount >= minDeliveryOrders;
+        const isIncomplete = !(talkTimeCompleted && deliveryOrdersCompleted);
+        
+        if (isIncomplete && isEligibleForAutoHalfDay) {
+          // Check if half-day leave already exists for this date
+          const { LeaveRequest } = await import('../models/leaveModel.js');
+          const existingHalfDayLeave = await LeaveRequest.findOne({
+            empId: employee.empId,
+            fromDate: { $gte: targetDate, $lt: nextDay },
+            isHalfDay: true,
+            status: { $in: ['pending', 'approved'] }
+          });
+          
+          if (!existingHalfDayLeave) {
+            // Create automatic half-day leave
+            const halfDayLeave = await LeaveRequest.create({
+              empId: employee.empId,
+              leaveType: 'custom',
+              fromDate: targetDate,
+              toDate: targetDate,
+              reason: `Automatic half-day leave due to incomplete daily targets on ${date}. Talktime: ${talkTimeHours.toFixed(1)}h/${minTalkTimeHours}h, Delivery Orders: ${deliveryOrdersCount}/${minDeliveryOrders}`,
+              totalDays: 0.5,
+              isHalfDay: true,
+              halfDayType: 'second_half', // Default to second half
+              status: 'approved', // Auto-approve
+              appliedAt: new Date(),
+              managerApprovedBy: 'SYSTEM',
+              managerApprovedAt: new Date(),
+              managerRemarks: 'Automatic half-day leave applied due to incomplete targets',
+              reviewedBy: 'SYSTEM',
+              reviewedAt: new Date(),
+              remarks: 'Auto-approved by system due to target incompletion'
+            });
+            
+            automaticHalfDayApplied = true;
+            halfDayLeaveDetails = {
+              leaveId: halfDayLeave._id,
+              leaveType: 'custom',
+              isHalfDay: true,
+              halfDayType: 'second_half',
+              reason: halfDayLeave.reason,
+              appliedAt: halfDayLeave.appliedAt,
+              status: halfDayLeave.status
+            };
+            
+            console.log(`🔄 Automatic half-day leave applied for Sales employee ${employee.employeeName} (${employee.empId}) on ${date} due to incomplete targets`);
+          } else {
+            console.log(`ℹ️ Half-day leave already exists for Sales employee ${employee.employeeName} (${employee.empId}) on ${date}`);
+          }
+        }
+
         employeeReports.push({
           empId: employee.empId,
           employeeName: employee.employeeName,
@@ -1539,7 +1828,14 @@ export const getSalesDepartmentReport = async (req, res) => {
             minutes: callData.totalTalkTime,
             formatted: `${Math.floor(talkTimeHours)}h ${Math.round((talkTimeHours % 1) * 60)}m`
           },
-          deliveryOrdersCount: deliveryOrdersCount
+          deliveryOrdersCount: deliveryOrdersCount,
+          // 🔄 Automatic half-day leave information
+          automaticHalfDayInfo: {
+            isEligible: isEligibleForAutoHalfDay,
+            daysSinceJoining: daysSinceJoining,
+            automaticHalfDayApplied: automaticHalfDayApplied,
+            halfDayLeaveDetails: halfDayLeaveDetails
+          }
         });
       } catch (error) {
         console.error(`❌ Error getting data for ${employee.employeeName}:`, error.message);
@@ -1557,7 +1853,13 @@ export const getSalesDepartmentReport = async (req, res) => {
             error: 'Failed to fetch talktime data'
           },
           deliveryOrdersCount: 0,
-          error: 'Failed to fetch data'
+          error: 'Failed to fetch data',
+          automaticHalfDayInfo: {
+            isEligible: false,
+            daysSinceJoining: 0,
+            automaticHalfDayApplied: false,
+            halfDayLeaveDetails: null
+          }
         });
       }
     }
@@ -1624,10 +1926,15 @@ export const getSalesDepartmentReport = async (req, res) => {
     const totalEmployees = employeeReports.length;
     const departmentStatus = totalEmployees > 0 ? (completedEmployees === totalEmployees ? 'completed' : 'incomplete') : 'no_employees';
 
+    // 🔄 Calculate automatic half-day leave statistics for Sales
+    const eligibleForAutoHalfDay = employeeReports.filter(emp => emp.automaticHalfDayInfo?.isEligible).length;
+    const autoHalfDayApplied = employeeReports.filter(emp => emp.automaticHalfDayInfo?.automaticHalfDayApplied).length;
+    const incompleteEmployees = totalEmployees - completedEmployees;
+
     const summary = {
       totalEmployees: employeeReports.length,
       completedEmployees: completedEmployees,
-      incompleteEmployees: totalEmployees - completedEmployees,
+      incompleteEmployees: incompleteEmployees,
       departmentStatus: departmentStatus,
       totalTalkTime: {
         hours: totalTalkTime / 60,
@@ -1640,6 +1947,13 @@ export const getSalesDepartmentReport = async (req, res) => {
         formatted: `${Math.floor(avgTalkTime / 60)}h ${Math.round((avgTalkTime % 60))}m`
       },
       totalDeliveryOrders: totalDeliveryOrders,
+      // 🔄 Automatic half-day leave summary for Sales
+      automaticHalfDaySummary: {
+        eligibleEmployees: eligibleForAutoHalfDay,
+        autoHalfDayApplied: autoHalfDayApplied,
+        autoHalfDayRate: eligibleForAutoHalfDay > 0 ? Math.round((autoHalfDayApplied / eligibleForAutoHalfDay) * 100) : 0,
+        description: `Out of ${eligibleForAutoHalfDay} eligible Sales employees (45+ days), ${autoHalfDayApplied} had automatic half-day leaves applied`
+      },
       targets: {
         talkTime: {
           required: minTalkTimeHours,

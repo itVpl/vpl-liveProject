@@ -208,7 +208,7 @@ const loginUser = async (req, res) => {
         const token = jwt.sign(
             { id: user._id, userId: user.userId, userType: user.userType },
             process.env.JWT_SECRET,
-            { expiresIn: '7d' }
+            { expiresIn: '7d', algorithm: 'HS256' }
         );
 
         // Set cookie
@@ -2323,6 +2323,361 @@ const getAllTruckersSimple = async (req, res) => {
     }
 };
 
+// 🔥 NEW: Complete Update API for Shipper/Driver
+const updateShipperDriver = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const {
+            userType,
+            compName,
+            mc_dot_no,
+            carrierType,
+            fleetsize,
+            compAdd,
+            country,
+            state,
+            city,
+            zipcode,
+            phoneNo,
+            email,
+            password,
+            status,
+            statusReason,
+            agentIds
+        } = req.body;
+
+        // ✅ 1. Find the user
+        let user = await ShipperDriver.findOne({ userId });
+        if (!user) {
+            // Try with _id if userId not found
+            user = await ShipperDriver.findById(userId);
+        }
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // ✅ 2. Check if email/phone already exists (if being updated)
+        if (email && email !== user.email) {
+            const existingEmail = await ShipperDriver.findOne({ email: email.toLowerCase() });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Email already registered with another account'
+                });
+            }
+        }
+
+        if (phoneNo && phoneNo !== user.phoneNo) {
+            const existingPhone = await ShipperDriver.findOne({ phoneNo });
+            if (existingPhone) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Phone number already registered with another account'
+                });
+            }
+        }
+
+        // ✅ 3. Hash password if provided
+        let hashedPassword = user.password;
+        if (password) {
+            hashedPassword = await hashPassword(password);
+        }
+
+        // ✅ 4. Handle file uploads for documents
+        let docUploadPath = user.docUpload;
+        let documents = user.documents || {};
+        
+        // Handle single document upload (backward compatibility)
+        if (req.file) {
+            docUploadPath = normalizeShipperTruckerPath(req.file.path);
+        }
+        
+        // Handle multiple document uploads (new functionality)
+        if (req.files) {
+            console.log('📁 Multiple files uploaded:', Object.keys(req.files));
+            
+            // Process each document type
+            const documentTypes = [
+                'brokeragePacket',
+                'carrierPartnerAgreement', 
+                'w9Form',
+                'mcAuthority',
+                'safetyLetter',
+                'bankingInfo',
+                'inspectionLetter',
+                'insurance'
+            ];
+            
+            documentTypes.forEach(docType => {
+                if (req.files[docType] && req.files[docType][0]) {
+                    const filePath = normalizeCMTDocumentPath(req.files[docType][0].path);
+                    documents[docType] = filePath;
+                    console.log(`📄 ${docType} uploaded:`, filePath);
+                }
+            });
+        }
+
+        // ✅ 5. Prepare update object
+        const updateData = {
+            ...(userType && { userType }),
+            ...(compName && { compName }),
+            ...(mc_dot_no && { mc_dot_no }),
+            ...(carrierType && { carrierType }),
+            ...(fleetsize && { fleetsize: parseInt(fleetsize) }),
+            ...(compAdd && { compAdd }),
+            ...(country && { country }),
+            ...(state && { state }),
+            ...(city && { city }),
+            ...(zipcode && { zipcode }),
+            ...(phoneNo && { phoneNo }),
+            ...(email && { email: email.toLowerCase() }),
+            ...(password && { password: hashedPassword }),
+            ...(status && { status }),
+            ...(statusReason && { statusReason }),
+            ...(status && { 
+                statusUpdatedBy: req.user?.empId || 'system',
+                statusUpdatedAt: new Date()
+            }),
+            ...(agentIds && { agentIds: Array.isArray(agentIds) ? agentIds : [agentIds] }),
+            ...(req.file && { docUpload: docUploadPath }),
+            ...(req.files && { documents })
+        };
+
+        // ✅ 6. Update the user
+        const updatedUser = await ShipperDriver.findOneAndUpdate(
+            { userId },
+            updateData,
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        if (!updatedUser) {
+            // Try with _id if userId update failed
+            const updatedById = await ShipperDriver.findByIdAndUpdate(
+                userId,
+                updateData,
+                { new: true, runValidators: true }
+            ).select('-password');
+            
+            if (!updatedById) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found for update'
+                });
+            }
+        }
+
+        const finalUser = updatedUser || updatedById;
+
+        // ✅ 7. Send notification email if status changed
+        if (status && status !== user.status) {
+            try {
+                const emailSubject = `Account Status Update - ${finalUser.compName}`;
+                const emailMessage = generateStatusUpdateEmail(
+                    finalUser.compName,
+                    finalUser.userType,
+                    status,
+                    finalUser.email,
+                    statusReason || 'Status updated by admin'
+                );
+
+                await sendEmail({
+                    to: finalUser.email,
+                    subject: emailSubject,
+                    html: emailMessage,
+                });
+
+                console.log('📧 Status update email sent to:', finalUser.email);
+            } catch (emailError) {
+                console.error('❌ Email sending failed:', emailError);
+                // Don't fail the update if email fails
+            }
+        }
+
+        // ✅ 8. Success response
+        res.status(200).json({
+            success: true,
+            message: 'User updated successfully',
+            user: {
+                _id: finalUser._id,
+                userId: finalUser.userId,
+                userType: finalUser.userType,
+                compName: finalUser.compName,
+                mc_dot_no: finalUser.mc_dot_no,
+                email: finalUser.email,
+                phoneNo: finalUser.phoneNo,
+                status: finalUser.status,
+                statusReason: finalUser.statusReason,
+                carrierType: finalUser.carrierType,
+                fleetsize: finalUser.fleetsize,
+                country: finalUser.country,
+                state: finalUser.state,
+                city: finalUser.city,
+                zipcode: finalUser.zipcode,
+                agentIds: finalUser.agentIds,
+                addedBy: finalUser.addedBy,
+                documents: finalUser.documents || {},
+                docUpload: finalUser.docUpload,
+                createdAt: finalUser.createdAt,
+                updatedAt: finalUser.updatedAt
+            },
+            updatedFields: Object.keys(updateData),
+            documents: req.files ? {
+                uploaded: Object.keys(documents).filter(key => documents[key]),
+                totalUploaded: Object.keys(documents).filter(key => documents[key]).length
+            } : null
+        });
+
+    } catch (error) {
+        console.error('❌ Update user error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
+// 🔥 NEW: Partial Update API (PATCH method)
+const partialUpdateShipperDriver = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const updateData = req.body;
+
+        // ✅ 1. Find the user
+        let user = await ShipperDriver.findOne({ userId });
+        if (!user) {
+            user = await ShipperDriver.findById(userId);
+        }
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // ✅ 2. Validate email/phone uniqueness if being updated
+        if (updateData.email && updateData.email !== user.email) {
+            const existingEmail = await ShipperDriver.findOne({ email: updateData.email.toLowerCase() });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Email already registered with another account'
+                });
+            }
+        }
+
+        if (updateData.phoneNo && updateData.phoneNo !== user.phoneNo) {
+            const existingPhone = await ShipperDriver.findOne({ phoneNo: updateData.phoneNo });
+            if (existingPhone) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Phone number already registered with another account'
+                });
+            }
+        }
+
+        // ✅ 3. Hash password if provided
+        if (updateData.password) {
+            updateData.password = await hashPassword(updateData.password);
+        }
+
+        // ✅ 4. Handle file uploads
+        if (req.file) {
+            updateData.docUpload = normalizeShipperTruckerPath(req.file.path);
+        }
+
+        if (req.files) {
+            const documents = user.documents || {};
+            const documentTypes = [
+                'brokeragePacket', 'carrierPartnerAgreement', 'w9Form',
+                'mcAuthority', 'safetyLetter', 'bankingInfo', 'inspectionLetter', 'insurance'
+            ];
+            
+            documentTypes.forEach(docType => {
+                if (req.files[docType] && req.files[docType][0]) {
+                    documents[docType] = normalizeCMTDocumentPath(req.files[docType][0].path);
+                }
+            });
+            updateData.documents = documents;
+        }
+
+        // ✅ 5. Add status tracking if status is being updated
+        if (updateData.status) {
+            updateData.statusUpdatedBy = req.user?.empId || 'system';
+            updateData.statusUpdatedAt = new Date();
+        }
+
+        // ✅ 6. Update the user
+        const updatedUser = await ShipperDriver.findOneAndUpdate(
+            { userId },
+            updateData,
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        if (!updatedUser) {
+            const updatedById = await ShipperDriver.findByIdAndUpdate(
+                userId,
+                updateData,
+                { new: true, runValidators: true }
+            ).select('-password');
+            
+            if (!updatedById) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found for update'
+                });
+            }
+        }
+
+        const finalUser = updatedUser || updatedById;
+
+        // ✅ 7. Send email notification if status changed
+        if (updateData.status && updateData.status !== user.status) {
+            try {
+                const emailSubject = `Account Status Update - ${finalUser.compName}`;
+                const emailMessage = generateStatusUpdateEmail(
+                    finalUser.compName,
+                    finalUser.userType,
+                    updateData.status,
+                    finalUser.email,
+                    updateData.statusReason || 'Status updated by admin'
+                );
+
+                await sendEmail({
+                    to: finalUser.email,
+                    subject: emailSubject,
+                    html: emailMessage,
+                });
+
+                console.log('📧 Status update email sent to:', finalUser.email);
+            } catch (emailError) {
+                console.error('❌ Email sending failed:', emailError);
+            }
+        }
+
+        // ✅ 8. Success response
+        res.status(200).json({
+            success: true,
+            message: 'User updated successfully',
+            user: finalUser,
+            updatedFields: Object.keys(updateData)
+        });
+
+    } catch (error) {
+        console.error('❌ Partial update error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
 export {
     registerUser,
     loginUser,
@@ -2345,5 +2700,7 @@ export {
     rejectTrucker,
     getAllTruckersSimple,
     assignUsersToCustomer,
-    getAssignedUsersForCustomer
+    getAssignedUsersForCustomer,
+    updateShipperDriver,
+    partialUpdateShipperDriver
 };
