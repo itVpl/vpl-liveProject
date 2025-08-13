@@ -4,7 +4,8 @@ import {
     getVideoInterviewPage,
     uploadVideoInterview,
     getVideoInterviewStatus,
-    deleteVideoInterview
+    deleteVideoInterview,
+    testS3Connection
 } from '../controllers/videoInterviewController.js';
 import { isAuthenticatedUser } from '../middlewares/auth.js';
 
@@ -36,6 +37,11 @@ videoInterviewRouter.get('/status/:candidateId',
 videoInterviewRouter.delete('/:candidateId', 
     isAuthenticatedUser, 
     deleteVideoInterview
+);
+
+// ✅ Test AWS S3 connection
+videoInterviewRouter.get('/test/s3', 
+    testS3Connection
 );
 
 export default videoInterviewRouter; 

@@ -16,6 +16,14 @@ const s3 = new AWS.S3({
 
 const BUCKET = process.env.AWS_S3_BUCKET_NAME || process.env.S3_BUCKET_NAME;
 
+// Log AWS configuration (without sensitive data)
+console.log('🔧 AWS S3 Configuration:', {
+    region: process.env.AWS_REGION || 'eu-north-1',
+    bucket: BUCKET ? 'Configured' : 'Missing',
+    accessKey: process.env.AWS_ACCESS_KEY_ID ? 'Present' : 'Missing',
+    secretKey: process.env.AWS_SECRET_ACCESS_KEY ? 'Present' : 'Missing'
+});
+
 // ✅ Generate video interview link for candidate
 export const generateVideoInterviewLink = catchAsyncError(async (req, res, next) => {
     try {
@@ -167,8 +175,25 @@ export const getVideoInterviewPage = catchAsyncError(async (req, res, next) => {
 // ✅ Upload video interview
 export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
     try {
+        console.log('🎥 Starting video upload process...');
+        
         const { token } = req.params;
         const { videoBlob, duration } = req.body;
+
+        console.log('📋 Upload details:', {
+            token: token ? 'Present' : 'Missing',
+            videoBlob: videoBlob ? `${videoBlob.substring(0, 50)}...` : 'Missing',
+            duration: duration
+        });
+
+        // Check AWS S3 configuration
+        if (!BUCKET) {
+            console.error('❌ AWS S3 Bucket not configured');
+            return res.status(500).json({
+                success: false,
+                message: 'Video upload service not configured'
+            });
+        }
 
         const candidate = await Candidate.findOne({ 
             videoInterviewToken: token,
@@ -176,11 +201,14 @@ export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
         });
 
         if (!candidate) {
+            console.error('❌ Candidate not found for token:', token);
             return res.status(404).json({
                 success: false,
                 message: 'Invalid or expired interview link'
             });
         }
+
+        console.log('✅ Candidate found:', candidate.candidateName);
 
         // Check if link has expired
         if (candidate.videoInterviewExpiry && new Date() > candidate.videoInterviewExpiry) {
@@ -201,12 +229,39 @@ export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
             });
         }
 
+        // Validate video blob
+        if (!videoBlob || !videoBlob.includes('data:video/')) {
+            console.error('❌ Invalid video blob format');
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid video format'
+            });
+        }
+
+        console.log('🔄 Converting video blob to buffer...');
+        
         // Convert base64 to buffer
-        const videoBuffer = Buffer.from(videoBlob.split(',')[1], 'base64');
+        let videoBuffer;
+        try {
+            const base64Data = videoBlob.split(',')[1];
+            if (!base64Data) {
+                throw new Error('Invalid base64 data');
+            }
+            videoBuffer = Buffer.from(base64Data, 'base64');
+            console.log('✅ Video buffer created, size:', videoBuffer.length, 'bytes');
+        } catch (bufferError) {
+            console.error('❌ Error converting video blob:', bufferError);
+            return res.status(400).json({
+                success: false,
+                message: 'Error processing video data'
+            });
+        }
         
         // Generate unique filename
         const timestamp = Date.now();
         const filename = `video-interviews/${candidate._id}/${candidate.candidateName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.webm`;
+        
+        console.log('📁 Uploading to S3:', filename);
         
         // Upload to AWS S3
         const uploadParams = {
@@ -223,7 +278,18 @@ export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
             }
         };
 
-        const uploadResult = await s3.upload(uploadParams).promise();
+        console.log('🚀 Starting S3 upload...');
+        let uploadResult;
+        try {
+            uploadResult = await s3.upload(uploadParams).promise();
+            console.log('✅ S3 upload successful:', uploadResult.Location);
+        } catch (s3Error) {
+            console.error('❌ S3 upload failed:', s3Error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to upload video. Please try again.'
+            });
+        }
 
         // Update candidate with video details
         candidate.videoInterviewStatus = 'Completed';
@@ -359,5 +425,52 @@ export const deleteVideoInterview = catchAsyncError(async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    }
+});
+
+// ✅ Test AWS S3 connectivity
+export const testS3Connection = catchAsyncError(async (req, res, next) => {
+    try {
+        console.log('🧪 Testing AWS S3 connection...');
+        
+        if (!BUCKET) {
+            return res.status(500).json({
+                success: false,
+                message: 'AWS S3 bucket not configured',
+                config: {
+                    bucket: 'Missing',
+                    region: process.env.AWS_REGION || 'eu-north-1',
+                    accessKey: process.env.AWS_ACCESS_KEY_ID ? 'Present' : 'Missing',
+                    secretKey: process.env.AWS_SECRET_ACCESS_KEY ? 'Present' : 'Missing'
+                }
+            });
+        }
+
+        // Test S3 connection by listing objects
+        const result = await s3.listObjectsV2({
+            Bucket: BUCKET,
+            MaxKeys: 1
+        }).promise();
+
+        res.status(200).json({
+            success: true,
+            message: 'AWS S3 connection successful',
+            bucket: BUCKET,
+            region: process.env.AWS_REGION || 'eu-north-1',
+            objectCount: result.KeyCount
+        });
+    } catch (error) {
+        console.error('❌ S3 connection test failed:', error);
+        res.status(500).json({
+            success: false,
+            message: 'AWS S3 connection failed',
+            error: error.message,
+            config: {
+                bucket: BUCKET || 'Missing',
+                region: process.env.AWS_REGION || 'eu-north-1',
+                accessKey: process.env.AWS_ACCESS_KEY_ID ? 'Present' : 'Missing',
+                secretKey: process.env.AWS_SECRET_ACCESS_KEY ? 'Present' : 'Missing'
+            }
+        });
     }
 }); 
