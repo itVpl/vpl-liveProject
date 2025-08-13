@@ -86,8 +86,8 @@ app.use(cookieParser());
 app.use(express.static('public'));
 
 // Move express.json and express.urlencoded to the very top before any routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
 // Move loadRouter before express.json and express.urlencoded for file upload compatibility
 app.use('/api/v1/load', loadRouter);
