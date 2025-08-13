@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Interview - VPL</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+
+        .candidate-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+
+        .candidate-info h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .candidate-info p {
+            color: #7f8c8d;
+            margin-bottom: 8px;
+        }
+
+        .video-container {
+            margin-bottom: 30px;
+        }
+
+        #videoElement {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 10px;
+            background: #000;
+        }
+
+        .controls {
+            margin: 20px 0;
+        }
+
+        .btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 0 10px;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #219a52;
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .timer {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 20px 0;
+        }
+
+        .instructions {
+            background: #e8f5e8;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #27ae60;
+            margin-bottom: 15px;
+        }
+
+        .instructions ul {
+            color: #27ae60;
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .loading {
+            display: none;
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .recording-indicator {
+            display: none;
+            color: #e74c3c;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎥 Video Interview</h1>
+            <p>Record your 2-minute interview response</p>
+        </div>
+
+        <div id="candidateInfo" class="candidate-info" style="display: none;">
+            <h3>📋 Candidate Information</h3>
+            <p><strong>Name:</strong> <span id="candidateName"></span></p>
+            <p><strong>Department:</strong> <span id="candidateDepartment"></span></p>
+        </div>
+
+        <div class="instructions">
+            <h3>🎯 Instructions</h3>
+            <ul>
+                <li>Allow camera and microphone access when prompted</li>
+                <li>Introduce yourself and share your experience</li>
+                <li>Explain why you want to join our team</li>
+                <li>Keep your response under 2 minutes</li>
+                <li>Click "Start Recording" when you're ready</li>
+            </ul>
+            <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
+                <strong>💡 Tip:</strong> If camera access is denied, click the camera icon in your browser's address bar and select "Allow".
+            </div>
+        </div>
+
+        <div class="video-container">
+            <video id="videoElement" autoplay muted></video>
+            <div class="timer" id="timer">00:00</div>
+            <div class="recording-indicator" id="recordingIndicator">🔴 Recording...</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" id="startBtn">🎥 Start Recording</button>
+            <button class="btn btn-danger" id="stopBtn" disabled>⏹️ Stop Recording</button>
+            <button class="btn" id="retakeBtn" disabled>🔄 Retake</button>
+            <button class="btn" id="submitBtn" disabled>📤 Submit</button>
+        </div>
+
+        <div class="loading" id="loading">Uploading video...</div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+        let startTime;
+        let timerInterval;
+        let token;
+
+        // Get token from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        token = urlParams.get('token');
+
+        // Initialize page
+        async function initializePage() {
+            if (!token) {
+                showStatus('Invalid interview link. Token not found.', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/video-interview/page/${token}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('candidateName').textContent = data.candidate.candidateName;
+                    document.getElementById('candidateDepartment').textContent = data.candidate.department;
+                    document.getElementById('candidateInfo').style.display = 'block';
+                    showStatus('Ready to start recording', 'info');
+                } else {
+                    showStatus('Invalid or expired interview link', 'error');
+                }
+            } catch (error) {
+                console.error('Page initialization error:', error);
+                showStatus('Error loading interview page. Please check your internet connection.', 'error');
+            }
+        }
+
+        // Start recording
+        async function startRecording() {
+            try {
+                // Try different video constraints for better compatibility
+                let stream;
+                try {
+                    // First try with ideal constraints
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            facingMode: 'user'
+                        }, 
+                        audio: true 
+                    });
+                } catch (videoError) {
+                    // Fallback to basic constraints
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: true, 
+                        audio: true 
+                    });
+                }
+                
+                document.getElementById('videoElement').srcObject = stream;
+                
+                // Try different MIME types for better compatibility
+                let mimeType = 'video/webm;codecs=vp9';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp8';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/mp4';
+                }
+                
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: mimeType
+                });
+
+                recordedChunks = [];
+                startTime = Date.now();
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: mimeType });
+                    document.getElementById('videoElement').src = URL.createObjectURL(blob);
+                    document.getElementById('videoElement').srcObject = null;
+                };
+
+                mediaRecorder.start();
+                startTimer();
+                
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                document.getElementById('recordingIndicator').style.display = 'block';
+                
+                showStatus('Recording started', 'info');
+            } catch (error) {
+                console.error('Camera access error:', error);
+                if (error.name === 'NotAllowedError') {
+                    showStatus('Camera/microphone access denied. Please allow access and try again.', 'error');
+                } else if (error.name === 'NotFoundError') {
+                    showStatus('No camera/microphone found. Please connect a device and try again.', 'error');
+                } else if (error.name === 'NotSupportedError') {
+                    showStatus('Video recording not supported in this browser. Please use Chrome, Firefox, or Safari.', 'error');
+                } else {
+                    showStatus('Error accessing camera/microphone: ' + error.message, 'error');
+                }
+            }
+        }
+
+        // Stop recording
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                
+                clearInterval(timerInterval);
+                document.getElementById('recordingIndicator').style.display = 'none';
+                
+                document.getElementById('stopBtn').disabled = true;
+                document.getElementById('retakeBtn').disabled = false;
+                document.getElementById('submitBtn').disabled = false;
+                
+                showStatus('Recording completed', 'success');
+            }
+        }
+
+        // Retake recording
+        function retakeRecording() {
+            document.getElementById('videoElement').src = '';
+            document.getElementById('timer').textContent = '00:00';
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('retakeBtn').disabled = true;
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('recordingIndicator').style.display = 'none';
+            showStatus('Ready to record again', 'info');
+        }
+
+        // Submit recording
+        async function submitRecording() {
+            if (recordedChunks.length === 0) {
+                showStatus('No recording to submit', 'error');
+                return;
+            }
+
+            const duration = Math.floor((Date.now() - startTime) / 1000);
+            if (duration > 120) {
+                showStatus('Video duration exceeds 2 minutes limit', 'error');
+                return;
+            }
+
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('submitBtn').disabled = true;
+
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const reader = new FileReader();
+                
+                reader.onload = async () => {
+                    const videoBlob = reader.result;
+                    
+                    const response = await fetch(`/api/v1/video-interview/upload/${token}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            videoBlob: videoBlob,
+                            duration: duration
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showStatus('Video interview submitted successfully!', 'success');
+                        document.getElementById('submitBtn').textContent = '✅ Submitted';
+                        document.getElementById('submitBtn').disabled = true;
+                    } else {
+                        showStatus(data.message || 'Error submitting video', 'error');
+                        document.getElementById('submitBtn').disabled = false;
+                    }
+                    
+                    document.getElementById('loading').style.display = 'none';
+                };
+
+                reader.readAsDataURL(blob);
+            } catch (error) {
+                showStatus('Error submitting video', 'error');
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        }
+
+        // Start timer
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('timer').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                // Auto-stop after 2 minutes
+                if (elapsed >= 120) {
+                    stopRecording();
+                }
+            }, 1000);
+        }
+
+        // Show status message
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startRecording);
+        document.getElementById('stopBtn').addEventListener('click', stopRecording);
+        document.getElementById('retakeBtn').addEventListener('click', retakeRecording);
+        document.getElementById('submitBtn').addEventListener('click', submitRecording);
+
+        // Initialize page when loaded
+        window.addEventListener('load', initializePage);
+    </script>
+</body>
+</html> 

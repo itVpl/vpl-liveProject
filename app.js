@@ -37,6 +37,8 @@ import hrActivityRoutes from './routes/hrActivityRoutes.js';
 import salesFollowUpRoutes from './routes/salesFollowUpRoutes.js';
 import rateLimit from 'express-rate-limit';
 import doRoutes from './routes/doRoutes.js';
+import candidateRouter from './routes/candidateRoutes.js';
+import videoInterviewRouter from './routes/videoInterviewRoutes.js';
 
 
 export const app = express();
@@ -62,7 +64,7 @@ const allowedOrigins = [
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
+            callback(null, true); 
         } else {
             console.error("❌ CORS Blocked Origin:", origin);
             callback(new Error('❌ Not allowed by CORS'));
@@ -78,6 +80,9 @@ app.use(cors({
 
 
 app.use(cookieParser());
+
+// Serve static files
+app.use(express.static('public'));
 
 // Move express.json and express.urlencoded to the very top before any routes
 app.use(express.json());
@@ -142,6 +147,8 @@ app.use('/api/v1/meeting', meetingRoutes);
 app.use('/api/v1/daytarget', dayTargetRoutes);
 app.use('/api/v1/hr-activity', hrActivityRoutes);
 app.use('/api/v1/sales-followup', salesFollowUpRoutes);
+app.use('/api/v1/candidate', candidateRouter);
+app.use('/api/v1/video-interview', videoInterviewRouter);
 setInterval(checkOverdueBreaks, 60000);
 
 // Daily target automation - run every day at 9 AM
