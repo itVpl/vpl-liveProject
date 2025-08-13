@@ -1,6 +1,7 @@
 import { Candidate } from "../models/candidateModel.js";
 import { sendEmail } from '../utils/sendEmail.js';
 import { catchAsyncError } from "../middlewares/catchAsynError.js";
+import { getCurrentDateIST, addDaysToIST, formatDateIST } from '../utils/dateUtils.js';
 
 // ✅ Create a new candidate
 export const createCandidate = catchAsyncError(async (req, res, next) => {
@@ -82,8 +83,7 @@ export const createCandidate = catchAsyncError(async (req, res, next) => {
         try {
             const crypto = await import('crypto');
             const token = crypto.randomBytes(32).toString('hex');
-            const expiryDate = new Date();
-            expiryDate.setDate(expiryDate.getDate() + 7);
+            const expiryDate = addDaysToIST(7);
 
             candidate.videoInterviewToken = token;
             candidate.videoInterviewStatus = 'Pending';
@@ -129,7 +129,7 @@ export const createCandidate = catchAsyncError(async (req, res, next) => {
                     </div>
                     
                     <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                      <p style="margin: 0; color: #856404; font-weight: bold;">⏰ Video interview link expires on ${candidate.videoInterviewExpiry.toLocaleDateString()}</p>
+                      <p style="margin: 0; color: #856404; font-weight: bold;">⏰ Video interview link expires on ${formatDateIST(candidate.videoInterviewExpiry)}</p>
                     </div>
                     
                     <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">

@@ -4,6 +4,7 @@ import { catchAsyncError } from "../middlewares/catchAsynError.js";
 import AWS from 'aws-sdk';
 import crypto from 'crypto';
 import path from 'path';
+import { getCurrentDateIST, addDaysToIST, formatDateIST, isExpiredIST } from '../utils/dateUtils.js';
 
 // AWS S3 Configuration
 const s3 = new AWS.S3({
@@ -40,9 +41,8 @@ export const generateVideoInterviewLink = catchAsyncError(async (req, res, next)
         // Generate unique token
         const token = crypto.randomBytes(32).toString('hex');
         
-        // Set expiry to 7 days from now
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 7);
+        // Set expiry to 7 days from now in IST
+        const expiryDate = addDaysToIST(7);
 
         // Update candidate with video interview details
         candidate.videoInterviewToken = token;
@@ -69,7 +69,7 @@ export const generateVideoInterviewLink = catchAsyncError(async (req, res, next)
                         <p><strong style="color: #34495e;">Name:</strong> <span style="color: #7f8c8d;">${candidate.candidateName}</span></p>
                         <p><strong style="color: #34495e;">Department:</strong> <span style="color: #7f8c8d;">${candidate.department}</span></p>
                         <p><strong style="color: #34495e;">Duration:</strong> <span style="color: #7f8c8d;">2 minutes maximum</span></p>
-                        <p><strong style="color: #34495e;">Expiry:</strong> <span style="color: #7f8c8d;">${expiryDate.toLocaleDateString()}</span></p>
+                        <p><strong style="color: #34495e;">Expiry:</strong> <span style="color: #7f8c8d;">${formatDateIST(expiryDate)}</span></p>
                       </div>
                     </div>
                     
@@ -92,7 +92,7 @@ export const generateVideoInterviewLink = catchAsyncError(async (req, res, next)
                     </div>
                     
                     <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                      <p style="margin: 0; color: #856404; font-weight: bold;">⏰ This link expires on ${expiryDate.toLocaleDateString()}</p>
+                      <p style="margin: 0; color: #856404; font-weight: bold;">⏰ This link expires on ${formatDateIST(expiryDate)}</p>
                     </div>
                     
                     <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
@@ -147,8 +147,8 @@ export const getVideoInterviewPage = catchAsyncError(async (req, res, next) => {
             });
         }
 
-        // Check if link has expired
-        if (candidate.videoInterviewExpiry && new Date() > candidate.videoInterviewExpiry) {
+        // Check if link has expired (using IST)
+        if (candidate.videoInterviewExpiry && isExpiredIST(candidate.videoInterviewExpiry)) {
             candidate.videoInterviewStatus = 'Expired';
             await candidate.save();
             
@@ -210,8 +210,8 @@ export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
 
         console.log('✅ Candidate found:', candidate.candidateName);
 
-        // Check if link has expired
-        if (candidate.videoInterviewExpiry && new Date() > candidate.videoInterviewExpiry) {
+        // Check if link has expired (using IST)
+        if (candidate.videoInterviewExpiry && isExpiredIST(candidate.videoInterviewExpiry)) {
             candidate.videoInterviewStatus = 'Expired';
             await candidate.save();
             
@@ -274,7 +274,7 @@ export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
                 candidateName: candidate.candidateName,
                 department: candidate.department,
                 duration: duration.toString(),
-                uploadedAt: new Date().toISOString()
+                uploadedAt: getCurrentDateIST().toISOString()
             }
         };
 
@@ -314,7 +314,7 @@ export const uploadVideoInterview = catchAsyncError(async (req, res, next) => {
                         <p><strong style="color: #34495e;">Department:</strong> <span style="color: #7f8c8d;">${candidate.department}</span></p>
                         <p><strong style="color: #34495e;">Email:</strong> <span style="color: #7f8c8d;">${candidate.email}</span></p>
                         <p><strong style="color: #34495e;">Video Duration:</strong> <span style="color: #7f8c8d;">${duration} seconds</span></p>
-                        <p><strong style="color: #34495e;">Uploaded:</strong> <span style="color: #7f8c8d;">${new Date().toLocaleString()}</span></p>
+                        <p><strong style="color: #34495e;">Uploaded:</strong> <span style="color: #7f8c8d;">${formatDateTimeIST(new Date())}</span></p>
                       </div>
                     </div>
                     

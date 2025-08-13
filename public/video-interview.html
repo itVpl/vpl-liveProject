@@ -502,6 +502,22 @@
             }, 1000);
         }
 
+        // Format current time in IST
+        function getCurrentTimeIST() {
+            const now = new Date();
+            const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+            const istTime = new Date(now.getTime() + istOffset);
+            return istTime.toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
         // Show status message
         function showStatus(message, type) {
             const statusDiv = document.getElementById('status');

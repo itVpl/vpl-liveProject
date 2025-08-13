@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { getCurrentDateIST } from '../utils/dateUtils.js';
 
 const candidateSchema = new mongoose.Schema({
     // Basic Information
@@ -173,17 +174,17 @@ const candidateSchema = new mongoose.Schema({
     },
     createdAt: {
         type: Date,
-        default: Date.now,
+        default: getCurrentDateIST,
     },
     updatedAt: {
         type: Date,
-        default: Date.now,
+        default: getCurrentDateIST,
     },
 });
 
 // Update the updatedAt field before saving
 candidateSchema.pre("save", function (next) {
-    this.updatedAt = Date.now();
+    this.updatedAt = getCurrentDateIST();
     next();
 });
 
