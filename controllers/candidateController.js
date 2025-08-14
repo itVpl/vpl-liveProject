@@ -317,43 +317,152 @@ export const updateCandidateStatus = catchAsyncError(async (req, res, next) => {
 
         // Send status update email to candidate
         try {
-            const statusMessages = {
-                'Shortlisted': 'Congratulations! Your application has been shortlisted.',
-                'Interviewed': 'Thank you for attending the interview.',
-                'Selected': 'Congratulations! You have been selected for the position.',
-                'Rejected': 'Thank you for your interest. Unfortunately, we cannot proceed with your application at this time.'
-            };
+            let subject, html;
 
-            const subject = `Application Status Update - ${status}`;
-            const html = `
-                <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-                  <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
-                    <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">📋 Status Update</h1>
-                    <div style="background: ${status === 'Selected' ? '#27ae60' : status === 'Rejected' ? '#e74c3c' : '#3498db'}; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
-                      <h2 style="margin: 0; font-size: 20px;">${status}</h2>
+            if (status === 'Shortlisted') {
+                // Special email for shortlisted candidates with interview details
+                subject = `🎉 Congratulations! You've Been Shortlisted - Interview Details`;
+                
+                const interviewDateFormatted = interviewDate ? 
+                    new Date(interviewDate).toLocaleDateString('en-IN', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }) : 'To be scheduled';
+
+                html = `
+                    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 20px; max-width: 700px; margin: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.15);">
+                        <div style="background: white; padding: 35px; border-radius: 15px; text-align: center;">
+                            <div style="background: linear-gradient(135deg, #27ae60, #2ecc71); color: white; padding: 20px; border-radius: 12px; margin-bottom: 30px;">
+                                <h1 style="margin: 0; font-size: 32px; font-weight: 700;">🎉 Congratulations!</h1>
+                                <p style="margin: 10px 0 0 0; font-size: 18px; opacity: 0.9;">You've Been Shortlisted</p>
+                            </div>
+                            
+                            <div style="background: #f8f9fa; padding: 25px; border-radius: 12px; margin-bottom: 25px; text-align: left;">
+                                <h3 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+                                    📋 Candidate Information
+                                </h3>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                    <div>
+                                        <p style="margin: 8px 0;"><strong style="color: #34495e;">Name:</strong> <span style="color: #7f8c8d;">${candidate.candidateName}</span></p>
+                                        <p style="margin: 8px 0;"><strong style="color: #34495e;">Department:</strong> <span style="color: #7f8c8d;">${candidate.department}</span></p>
+                                    </div>
+                                    <div>
+                                        <p style="margin: 8px 0;"><strong style="color: #34495e;">Phone:</strong> <span style="color: #7f8c8d;">${candidate.phone}</span></p>
+                                        <p style="margin: 8px 0;"><strong style="color: #34495e;">Email:</strong> <span style="color: #7f8c8d;">${candidate.email}</span></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 25px; border-radius: 12px; margin-bottom: 25px; border-left: 5px solid #27ae60;">
+                                <h3 style="color: #27ae60; margin: 0 0 20px 0; font-size: 20px;">
+                                    📅 Interview Details
+                                </h3>
+                                <div style="text-align: left;">
+                                    <p style="margin: 12px 0; font-size: 16px;">
+                                        <strong style="color: #2c3e50;">Interview Date & Time:</strong><br>
+                                        <span style="color: #27ae60; font-weight: 600; font-size: 18px;">${interviewDateFormatted}</span>
+                                    </p>
+                                    ${interviewNotes ? `
+                                        <p style="margin: 12px 0; font-size: 16px;">
+                                            <strong style="color: #2c3e50;">Additional Notes:</strong><br>
+                                            <span style="color: #7f8c8d; font-style: italic;">${interviewNotes}</span>
+                                        </p>
+                                    ` : ''}
+                                </div>
+                            </div>
+
+                            <div style="background: linear-gradient(135deg, #fff3cd, #ffeaa7); padding: 25px; border-radius: 12px; margin-bottom: 25px; border-left: 5px solid #f39c12;">
+                                <h3 style="color: #d68910; margin: 0 0 20px 0; font-size: 20px;">
+                                    🏢 Office Location
+                                </h3>
+                                <div style="text-align: left;">
+                                    <p style="margin: 12px 0; font-size: 16px; line-height: 1.6;">
+                                        <strong style="color: #2c3e50;">Address:</strong><br>
+                                        <span style="color: #7f8c8d; font-weight: 500;">
+                                            C-14, Udyog Vihar Phase V,<br>
+                                            Sector 19, Gurugram,<br>
+                                            Haryana 122016
+                                        </span>
+                                    </p>
+                                    <div style="margin-top: 15px;">
+                                        <a href="https://maps.app.goo.gl/ngmJYvm6H3oDFZqG8" 
+                                           style="display: inline-block; background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease;">
+                                            📍 View on Google Maps
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="background: linear-gradient(135deg, #dbeafe, #bfdbfe); padding: 20px; border-radius: 12px; margin-bottom: 25px; border-left: 5px solid #3498db;">
+                                <h3 style="color: #1e40af; margin: 0 0 15px 0; font-size: 18px;">
+                                    📋 Important Instructions
+                                </h3>
+                                <ul style="margin: 0; padding-left: 20px; text-align: left; color: #1e3a8a;">
+                                    <li style="margin: 8px 0;">Please arrive 10 minutes before your scheduled interview time</li>
+                                    <li style="margin: 8px 0;">Bring a copy of your resume and any relevant documents</li>
+                                    <li style="margin: 8px 0;">Dress professionally for the interview</li>
+                                    <li style="margin: 8px 0;">If you need to reschedule, please contact us at least 24 hours in advance</li>
+                                </ul>
+                            </div>
+
+                            <div style="background: #e8f5e8; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                                <p style="margin: 0; color: #27ae60; font-weight: 600; font-size: 16px;">
+                                    🎯 We look forward to meeting you and discussing your potential role with our team!
+                                </p>
+                            </div>
+                            
+                            <div style="border-top: 1px solid #ecf0f1; padding-top: 20px; margin-top: 20px;">
+                                <p style="margin: 0; color: #95a5a6; font-size: 14px;">
+                                    If you have any questions or need to reschedule, please contact our HR team.<br>
+                                    <strong>Email:</strong> hr@vpl.com | <strong>Phone:</strong> +91-XXXXXXXXXX
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                      <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Application Details</h3>
-                      <div style="text-align: left;">
-                        <p><strong style="color: #34495e;">Name:</strong> <span style="color: #7f8c8d;">${candidate.candidateName}</span></p>
-                        <p><strong style="color: #34495e;">Department:</strong> <span style="color: #7f8c8d;">${candidate.department}</span></p>
-                        <p><strong style="color: #34495e;">Status:</strong> <span style="color: #7f8c8d;">${status}</span></p>
-                        ${interviewDate ? `<p><strong style="color: #34495e;">Interview Date:</strong> <span style="color: #7f8c8d;">${new Date(interviewDate).toLocaleDateString()}</span></p>` : ''}
-                        ${interviewNotes ? `<p><strong style="color: #34495e;">Notes:</strong> <span style="color: #7f8c8d;">${interviewNotes}</span></p>` : ''}
+                `;
+            } else {
+                // Standard email for other status updates
+                const statusMessages = {
+                    'Interviewed': 'Thank you for attending the interview.',
+                    'Selected': 'Congratulations! You have been selected for the position.',
+                    'Rejected': 'Thank you for your interest. Unfortunately, we cannot proceed with your application at this time.'
+                };
+
+                subject = `Application Status Update - ${status}`;
+                html = `
+                    <div style="font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; max-width: 600px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                      <div style="background: white; padding: 25px; border-radius: 10px; text-align: center;">
+                        <h1 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 28px;">📋 Status Update</h1>
+                        <div style="background: ${status === 'Selected' ? '#27ae60' : status === 'Rejected' ? '#e74c3c' : '#3498db'}; color: white; padding: 10px; border-radius: 8px; margin-bottom: 25px;">
+                          <h2 style="margin: 0; font-size: 20px;">${status}</h2>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                          <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 18px;">📋 Application Details</h3>
+                          <div style="text-align: left;">
+                            <p><strong style="color: #34495e;">Name:</strong> <span style="color: #7f8c8d;">${candidate.candidateName}</span></p>
+                            <p><strong style="color: #34495e;">Department:</strong> <span style="color: #7f8c8d;">${candidate.department}</span></p>
+                            <p><strong style="color: #34495e;">Status:</strong> <span style="color: #7f8c8d;">${status}</span></p>
+                            ${interviewDate ? `<p><strong style="color: #34495e;">Interview Date:</strong> <span style="color: #7f8c8d;">${new Date(interviewDate).toLocaleDateString()}</span></p>` : ''}
+                            ${interviewNotes ? `<p><strong style="color: #34495e;">Notes:</strong> <span style="color: #7f8c8d;">${interviewNotes}</span></p>` : ''}
+                          </div>
+                        </div>
+                        
+                        <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                          <p style="margin: 0; color: #27ae60; font-weight: bold;">${statusMessages[status] || 'Your application status has been updated.'}</p>
+                        </div>
+                        
+                        <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
+                          If you have any questions, please contact our HR team.
+                        </p>
                       </div>
                     </div>
-                    
-                    <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                      <p style="margin: 0; color: #27ae60; font-weight: bold;">${statusMessages[status] || 'Your application status has been updated.'}</p>
-                    </div>
-                    
-                    <p style="margin-top: 20px; color: #95a5a6; font-size: 14px;">
-                      If you have any questions, please contact our HR team.
-                    </p>
-                  </div>
-                </div>
-            `;
+                `;
+            }
 
             await sendEmail({
                 to: candidate.email,
